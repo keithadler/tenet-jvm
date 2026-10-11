@@ -25,21 +25,22 @@ def main():
                 d = os.path.join(base, sub)
                 for f in sorted(os.listdir(d)):
                     if f.endswith(".ndjson"):
-                        cases.append((f"{g}/{sub}/{f[:-7]}", os.path.join(d, f), exp))
+                        cases.append((f"{g}/{sub}/{f[:-7]}", os.path.join(d, f), exp, 60))
         else:
             for f in sorted(os.listdir(base)):
                 if not f.endswith(".ndjson"):
                     continue
                 name = f[:-7]
                 ypath = os.path.join(arena, "tests", g, name + ".yaml")
-                exp = "accept"
+                exp, tmo = "accept", 300
                 if os.path.exists(ypath):
-                    exp = (yaml.safe_load(open(ypath)) or {}).get("outcome", "accept")
-                cases.append((f"{g}/{name}", os.path.join(base, f), exp))
-        for label, path, exp in cases:
+                    y = yaml.safe_load(open(ypath)) or {}
+                    exp, tmo = y.get("outcome", "accept"), y.get("timeout", 300)
+                cases.append((f"{g}/{name}", os.path.join(base, f), exp, tmo))
+        for label, path, exp, tmo in cases:
             t0 = time.time()
             try:
-                r = subprocess.run([java, *opts, "-cp", cp, "tenet.Main", path], capture_output=True, timeout=300)
+                r = subprocess.run([java, *opts, "-cp", cp, "tenet.Main", path], capture_output=True, timeout=tmo)
                 code = r.returncode
             except subprocess.TimeoutExpired:
                 code = 124

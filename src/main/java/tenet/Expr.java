@@ -29,28 +29,36 @@ public abstract class Expr {
         this.hasLevelParam = hasLevelParam;
     }
 
+    static int mix(int a, int b) {
+        int h = a * 0x9E3779B1 + b;
+        h ^= h >>> 15;
+        h *= 0x85EBCA6B;
+        h ^= h >>> 13;
+        return h;
+    }
+
     // ---- node types --------------------------------------------------------
 
     public static final class BVar extends Expr {
         public final int idx;
-        BVar(int idx) { super(Kind.BVAR, 1000003 * idx + 7, idx + 1, false, false); this.idx = idx; }
+        BVar(int idx) { super(Kind.BVAR, mix(idx, 7), idx + 1, false, false); this.idx = idx; }
     }
 
     public static final class FVar extends Expr {
         public final long id;
-        FVar(long id) { super(Kind.FVAR, Long.hashCode(id) * 31 + 11, 0, true, false); this.id = id; }
+        FVar(long id) { super(Kind.FVAR, mix(Long.hashCode(id), 11), 0, true, false); this.id = id; }
     }
 
     public static final class Sort extends Expr {
         public final Level level;
-        Sort(Level l) { super(Kind.SORT, l.hashCode() * 31 + 13, 0, false, l.hasParam); level = l; }
+        Sort(Level l) { super(Kind.SORT, mix(l.hashCode(), 13), 0, false, l.hasParam); level = l; }
     }
 
     public static final class Const extends Expr {
         public final Name name;
         public final List<Level> levels;
         Const(Name n, List<Level> ls) {
-            super(Kind.CONST, Objects.hash(n.hashCode(), ls) * 31 + 17, 0, false, ls.stream().anyMatch(x -> x.hasParam));
+            super(Kind.CONST, mix(mix(n.hashCode(), ls.hashCode()), 17), 0, false, ls.stream().anyMatch(x -> x.hasParam));
             name = n;
             levels = ls;
         }
@@ -59,7 +67,7 @@ public abstract class Expr {
     public static final class App extends Expr {
         public final Expr fn, arg;
         App(Expr f, Expr a) {
-            super(Kind.APP, (f.hash * 31 + a.hash) * 31 + 19, Math.max(f.looseBVarRange, a.looseBVarRange),
+            super(Kind.APP, mix(mix(f.hash, a.hash), 19), Math.max(f.looseBVarRange, a.looseBVarRange),
                     f.hasFVar || a.hasFVar, f.hasLevelParam || a.hasLevelParam);
             fn = f;
             arg = a;
@@ -71,7 +79,7 @@ public abstract class Expr {
         public final Expr type, body;
         public final String info;
         Binder(Kind k, Name n, Expr t, Expr b, String info) {
-            super(k, (t.hash * 31 + b.hash) * 31 + (k == Kind.LAM ? 23 : 29), Math.max(t.looseBVarRange, Math.max(0, b.looseBVarRange - 1)),
+            super(k, mix(mix(t.hash, b.hash), k == Kind.LAM ? 23 : 29), Math.max(t.looseBVarRange, Math.max(0, b.looseBVarRange - 1)),
                     t.hasFVar || b.hasFVar, t.hasLevelParam || b.hasLevelParam);
             name = n;
             type = t;
@@ -84,7 +92,7 @@ public abstract class Expr {
         public final Name name;
         public final Expr type, value, body;
         Let(Name n, Expr t, Expr v, Expr b) {
-            super(Kind.LET, ((t.hash * 31 + v.hash) * 31 + b.hash) * 31 + 37,
+            super(Kind.LET, mix(mix(mix(t.hash, v.hash), b.hash), 37),
                     Math.max(Math.max(t.looseBVarRange, v.looseBVarRange), Math.max(0, b.looseBVarRange - 1)),
                     t.hasFVar || v.hasFVar || b.hasFVar, t.hasLevelParam || v.hasLevelParam || b.hasLevelParam);
             name = n;
@@ -96,12 +104,12 @@ public abstract class Expr {
 
     public static final class NatLit extends Expr {
         public final BigInteger val;
-        NatLit(BigInteger v) { super(Kind.NAT, v.hashCode() * 31 + 41, 0, false, false); val = v; }
+        NatLit(BigInteger v) { super(Kind.NAT, mix(v.hashCode(), 41), 0, false, false); val = v; }
     }
 
     public static final class StrLit extends Expr {
         public final String val;
-        StrLit(String v) { super(Kind.STR, v.hashCode() * 31 + 43, 0, false, false); val = v; }
+        StrLit(String v) { super(Kind.STR, mix(v.hashCode(), 43), 0, false, false); val = v; }
     }
 
     public static final class Proj extends Expr {
@@ -109,7 +117,7 @@ public abstract class Expr {
         public final int idx;
         public final Expr struct;
         Proj(Name t, int i, Expr s) {
-            super(Kind.PROJ, (Objects.hash(t.hashCode(), i) * 31 + s.hash) * 31 + 47, s.looseBVarRange, s.hasFVar, s.hasLevelParam);
+            super(Kind.PROJ, mix(mix(mix(t.hashCode(), i), s.hash), 47), s.looseBVarRange, s.hasFVar, s.hasLevelParam);
             typeName = t;
             idx = i;
             struct = s;
@@ -121,18 +129,82 @@ public abstract class Expr {
     private static final BVar[] SMALL_BVARS = new BVar[64];
     static { for (int i = 0; i < SMALL_BVARS.length; i++) SMALL_BVARS[i] = new BVar(i); }
 
-    public static Expr bvar(int i) { return i < SMALL_BVARS.length ? SMALL_BVARS[i] : new BVar(i); }
-    public static Expr fvar(long id) { return new FVar(id); }
-    public static Expr sort(Level l) { return new Sort(l); }
-    public static Expr cnst(Name n, List<Level> ls) { return new Const(n, ls); }
-    public static Expr app(Expr f, Expr a) { return new App(f, a); }
-    public static Expr lam(Name n, Expr t, Expr b, String info) { return new Binder(Kind.LAM, n, t, b, info); }
-    public static Expr pi(Name n, Expr t, Expr b, String info) { return new Binder(Kind.PI, n, t, b, info); }
-    public static Expr let(Name n, Expr t, Expr v, Expr b) { return new Let(n, t, v, b); }
-    public static Expr nat(BigInteger v) { return new NatLit(v); }
-    public static Expr nat(long v) { return new NatLit(BigInteger.valueOf(v)); }
-    public static Expr str(String s) { return new StrLit(s); }
-    public static Expr proj(Name t, int i, Expr s) { return new Proj(t, i, s); }
+    public static Expr bvar(int i) { return i < SMALL_BVARS.length ? SMALL_BVARS[i] : intern(new BVar(i)); }
+    public static Expr fvar(long id) { return intern(new FVar(id)); }
+    public static Expr sort(Level l) { return intern(new Sort(l)); }
+    public static Expr cnst(Name n, List<Level> ls) { return intern(new Const(n, ls)); }
+    public static Expr app(Expr f, Expr a) { return intern(new App(f, a)); }
+    public static Expr lam(Name n, Expr t, Expr b, String info) { return intern(new Binder(Kind.LAM, n, t, b, info)); }
+    public static Expr pi(Name n, Expr t, Expr b, String info) { return intern(new Binder(Kind.PI, n, t, b, info)); }
+    public static Expr let(Name n, Expr t, Expr v, Expr b) { return intern(new Let(n, t, v, b)); }
+    public static Expr nat(BigInteger v) { return intern(new NatLit(v)); }
+    public static Expr nat(long v) { return nat(BigInteger.valueOf(v)); }
+    public static Expr str(String s) { return intern(new StrLit(s)); }
+    public static Expr proj(Name t, int i, Expr s) { return intern(new Proj(t, i, s)); }
+
+    // ---- hash-consing ------------------------------------------------------
+    //
+    // Structurally equal terms built through the factories above are the same object, so that equality
+    // and cache lookups are pointer comparisons. The table is strong and is emptied between declarations
+    // once it has grown large; terms from before a flush stay valid, they are merely no longer shared with
+    // equal terms built afterwards, which structural equality (the fallback in equals) still identifies.
+
+    private static Expr[] consTable = new Expr[1 << 16];
+    private static int consCount = 0;
+    private static final int CONS_HARD_CAP = 1 << 25;
+
+    private static boolean shallowEq(Expr a, Expr b) {
+        if (a.kind != b.kind || a.hash != b.hash) return false;
+        switch (a.kind) {
+            case BVAR: return ((BVar) a).idx == ((BVar) b).idx;
+            case FVAR: return ((FVar) a).id == ((FVar) b).id;
+            case SORT: return ((Sort) a).level.equals(((Sort) b).level);
+            case CONST: return ((Const) a).name.equals(((Const) b).name) && ((Const) a).levels.equals(((Const) b).levels);
+            case NAT: return ((NatLit) a).val.equals(((NatLit) b).val);
+            case STR: return ((StrLit) a).val.equals(((StrLit) b).val);
+            case APP: return ((App) a).fn == ((App) b).fn && ((App) a).arg == ((App) b).arg;
+            case LAM: case PI: return ((Binder) a).type == ((Binder) b).type && ((Binder) a).body == ((Binder) b).body;
+            case LET: return ((Let) a).type == ((Let) b).type && ((Let) a).value == ((Let) b).value && ((Let) a).body == ((Let) b).body;
+            default: return ((Proj) a).idx == ((Proj) b).idx && ((Proj) a).typeName.equals(((Proj) b).typeName) && ((Proj) a).struct == ((Proj) b).struct;
+        }
+    }
+
+    private static Expr intern(Expr c) {
+        Expr[] t = consTable;
+        int mask = t.length - 1;
+        int i = (c.hash * 0x9E3779B9) >>> (32 - Integer.numberOfTrailingZeros(t.length));
+        while (true) {
+            Expr e = t[i];
+            if (e == null) break;
+            if (shallowEq(e, c)) return e;
+            i = (i + 1) & mask;
+        }
+        if (consCount >= CONS_HARD_CAP) return c;
+        t[i] = c;
+        if (++consCount * 2 > t.length) growCons();
+        return c;
+    }
+
+    private static void growCons() {
+        Expr[] old = consTable;
+        Expr[] t = new Expr[old.length * 2];
+        int mask = t.length - 1;
+        for (Expr e : old) {
+            if (e == null) continue;
+            int i = (e.hash * 0x9E3779B9) >>> (32 - Integer.numberOfTrailingZeros(t.length));
+            while (t[i] != null) i = (i + 1) & mask;
+            t[i] = e;
+        }
+        consTable = t;
+    }
+
+    /** Empties the sharing table if it has grown past the given number of entries. */
+    public static void flushConsTable(int maxEntries) {
+        if (consCount > maxEntries) {
+            consTable = new Expr[1 << 16];
+            consCount = 0;
+        }
+    }
 
     public static Expr apps(Expr f, List<Expr> args) {
         for (Expr a : args) f = app(f, a);
@@ -151,11 +223,82 @@ public abstract class Expr {
     @Override public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof Expr)) return false;
-        return eq(this, (Expr) o);
+        Expr b = (Expr) o;
+        if (hash != b.hash || kind != b.kind) return false;
+        return eq(this, b);
     }
 
-    /** Structural equality up to binder names; iterative along the spine to avoid deep recursion. */
+    private static final class Pair {
+        final Expr a, b;
+        Pair(Expr a, Expr b) { this.a = a; this.b = b; }
+        @Override public int hashCode() { return System.identityHashCode(a) * 31 + System.identityHashCode(b); }
+        @Override public boolean equals(Object o) { return o instanceof Pair && ((Pair) o).a == a && ((Pair) o).b == b; }
+    }
+
+    private static final int EQ_BUDGET = 256;
+
+    /**
+     * Structural equality up to binder names. Terms are DAGs, so a naive walk of two isomorphic but
+     * unshared copies is exponential; after a small budget of steps we switch to a walk that remembers
+     * the pairs of nodes it has already proved equal.
+     */
     private static boolean eq(Expr a, Expr b) {
+        int[] budget = {EQ_BUDGET};
+        int r = eqBounded(a, b, budget);
+        if (r != 2) return r == 1;
+        return eqMemo(a, b, new java.util.HashSet<>());
+    }
+
+    /** 1 equal, 0 different, 2 budget exhausted. */
+    private static int eqBounded(Expr a, Expr b, int[] budget) {
+        while (true) {
+            if (a == b) return 1;
+            if (a.hash != b.hash || a.kind != b.kind) return 0;
+            if (--budget[0] < 0) return 2;
+            switch (a.kind) {
+                case BVAR: return ((BVar) a).idx == ((BVar) b).idx ? 1 : 0;
+                case FVAR: return ((FVar) a).id == ((FVar) b).id ? 1 : 0;
+                case SORT: return ((Sort) a).level.equals(((Sort) b).level) ? 1 : 0;
+                case CONST: return ((Const) a).name.equals(((Const) b).name) && ((Const) a).levels.equals(((Const) b).levels) ? 1 : 0;
+                case NAT: return ((NatLit) a).val.equals(((NatLit) b).val) ? 1 : 0;
+                case STR: return ((StrLit) a).val.equals(((StrLit) b).val) ? 1 : 0;
+                case APP: {
+                    App x = (App) a, y = (App) b;
+                    int r = eqBounded(x.arg, y.arg, budget);
+                    if (r != 1) return r;
+                    a = x.fn;
+                    b = y.fn;
+                    break;
+                }
+                case LAM: case PI: {
+                    Binder x = (Binder) a, y = (Binder) b;
+                    int r = eqBounded(x.type, y.type, budget);
+                    if (r != 1) return r;
+                    a = x.body;
+                    b = y.body;
+                    break;
+                }
+                case LET: {
+                    Let x = (Let) a, y = (Let) b;
+                    int r = eqBounded(x.type, y.type, budget);
+                    if (r != 1) return r;
+                    r = eqBounded(x.value, y.value, budget);
+                    if (r != 1) return r;
+                    a = x.body;
+                    b = y.body;
+                    break;
+                }
+                default: {
+                    Proj x = (Proj) a, y = (Proj) b;
+                    if (x.idx != y.idx || !x.typeName.equals(y.typeName)) return 0;
+                    a = x.struct;
+                    b = y.struct;
+                }
+            }
+        }
+    }
+
+    private static boolean eqMemo(Expr a, Expr b, java.util.Set<Pair> done) {
         while (true) {
             if (a == b) return true;
             if (a.hash != b.hash || a.kind != b.kind) return false;
@@ -166,23 +309,27 @@ public abstract class Expr {
                 case CONST: return ((Const) a).name.equals(((Const) b).name) && ((Const) a).levels.equals(((Const) b).levels);
                 case NAT: return ((NatLit) a).val.equals(((NatLit) b).val);
                 case STR: return ((StrLit) a).val.equals(((StrLit) b).val);
+                default: break;
+            }
+            if (!done.add(new Pair(a, b))) return true; // already proved (or being proved: cannot differ on a DAG)
+            switch (a.kind) {
                 case APP: {
                     App x = (App) a, y = (App) b;
-                    if (!eq(x.arg, y.arg)) return false;
+                    if (!eqMemo(x.arg, y.arg, done)) return false;
                     a = x.fn;
                     b = y.fn;
                     break;
                 }
                 case LAM: case PI: {
                     Binder x = (Binder) a, y = (Binder) b;
-                    if (!eq(x.type, y.type)) return false;
+                    if (!eqMemo(x.type, y.type, done)) return false;
                     a = x.body;
                     b = y.body;
                     break;
                 }
                 case LET: {
                     Let x = (Let) a, y = (Let) b;
-                    if (!eq(x.type, y.type) || !eq(x.value, y.value)) return false;
+                    if (!eqMemo(x.type, y.type, done) || !eqMemo(x.value, y.value, done)) return false;
                     a = x.body;
                     b = y.body;
                     break;
@@ -237,7 +384,58 @@ public abstract class Expr {
         @Override public boolean equals(Object o) { return o instanceof Key && ((Key) o).e == e && ((Key) o).off == off; }
     }
 
-    public static Expr replace(Expr e, Replacer f) { return replace(e, 0, f, new HashMap<>()); }
+    private static final class BudgetExceeded extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        BudgetExceeded() { super(null, null, false, false); }
+    }
+
+    private static final BudgetExceeded BUDGET_EXCEEDED = new BudgetExceeded();
+    private static final int REPLACE_UNCACHED_BUDGET = 4096;
+
+    /**
+     * Rebuilds e, letting f replace sub-terms. Small terms are walked without any bookkeeping; if the walk
+     * turns out to be large (where shared sub-terms could otherwise be revisited exponentially often) it is
+     * restarted with a cache keyed on node identity and binder depth.
+     */
+    public static Expr replace(Expr e, Replacer f) {
+        try {
+            return replaceFast(e, 0, f, new int[] {REPLACE_UNCACHED_BUDGET});
+        } catch (BudgetExceeded x) {
+            return replace(e, 0, f, new HashMap<>());
+        }
+    }
+
+    private static Expr replaceFast(Expr e, int off, Replacer f, int[] budget) {
+        Expr r = f.apply(e, off);
+        if (r != null) return r;
+        switch (e.kind) {
+            case APP: {
+                if (--budget[0] < 0) throw BUDGET_EXCEEDED;
+                App a = (App) e;
+                Expr nf = replaceFast(a.fn, off, f, budget), na = replaceFast(a.arg, off, f, budget);
+                return nf == a.fn && na == a.arg ? e : app(nf, na);
+            }
+            case LAM: case PI: {
+                if (--budget[0] < 0) throw BUDGET_EXCEEDED;
+                Binder b = (Binder) e;
+                Expr nt = replaceFast(b.type, off, f, budget), nb = replaceFast(b.body, off + 1, f, budget);
+                return nt == b.type && nb == b.body ? e : (b.kind == Kind.LAM ? lam(b.name, nt, nb, b.info) : pi(b.name, nt, nb, b.info));
+            }
+            case LET: {
+                if (--budget[0] < 0) throw BUDGET_EXCEEDED;
+                Let l = (Let) e;
+                Expr nt = replaceFast(l.type, off, f, budget), nv = replaceFast(l.value, off, f, budget), nb = replaceFast(l.body, off + 1, f, budget);
+                return nt == l.type && nv == l.value && nb == l.body ? e : let(l.name, nt, nv, nb);
+            }
+            case PROJ: {
+                if (--budget[0] < 0) throw BUDGET_EXCEEDED;
+                Proj p = (Proj) e;
+                Expr ns = replaceFast(p.struct, off, f, budget);
+                return ns == p.struct ? e : proj(p.typeName, p.idx, ns);
+            }
+            default: return e;
+        }
+    }
 
     private static Expr replace(Expr e, int off, Replacer f, Map<Key, Expr> cache) {
         Expr r = f.apply(e, off);
@@ -260,19 +458,19 @@ public abstract class Expr {
             case LAM: case PI: {
                 Binder b = (Binder) e;
                 Expr nt = replace(b.type, off, f, cache), nb = replace(b.body, off + 1, f, cache);
-                res = nt == b.type && nb == b.body ? e : new Binder(b.kind, b.name, nt, nb, b.info);
+                res = nt == b.type && nb == b.body ? e : (b.kind == Kind.LAM ? lam(b.name, nt, nb, b.info) : pi(b.name, nt, nb, b.info));
                 break;
             }
             case LET: {
                 Let l = (Let) e;
                 Expr nt = replace(l.type, off, f, cache), nv = replace(l.value, off, f, cache), nb = replace(l.body, off + 1, f, cache);
-                res = nt == l.type && nv == l.value && nb == l.body ? e : new Let(l.name, nt, nv, nb);
+                res = nt == l.type && nv == l.value && nb == l.body ? e : let(l.name, nt, nv, nb);
                 break;
             }
             case PROJ: {
                 Proj p = (Proj) e;
                 Expr ns = replace(p.struct, off, f, cache);
-                res = ns == p.struct ? e : new Proj(p.typeName, p.idx, ns);
+                res = ns == p.struct ? e : proj(p.typeName, p.idx, ns);
                 break;
             }
             default: res = e;
