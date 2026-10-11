@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 import java.util.ArrayList;
 import java.util.List;

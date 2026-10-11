@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 /** Debug printer for expressions. */
 public final class Printer {

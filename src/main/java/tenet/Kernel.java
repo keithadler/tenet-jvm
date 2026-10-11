@@ -1,7 +1,10 @@
-package leankernel;
+package tenet;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Adds declarations to an environment, checking each one. */
@@ -151,17 +154,89 @@ public final class Kernel {
     }
 
     private void addInductive(InductiveBlock b) {
-        boolean nested = b.types.stream().anyMatch(t -> t.numNested > 0);
-        if (nested) {
-            // Nested inductives are not yet verified: accept the declarations as exported and say so.
-            for (Decl.Inductive t : b.types) { tc.begin(t.levelParams, TypeChecker.rank(t)); checkType(t); env.add(t); }
-            for (Decl.Ctor c : b.ctors) { tc.begin(c.levelParams, TypeChecker.rank(c)); checkType(c); env.add(c); }
-            for (Decl.Recursor r : b.recs) { tc.begin(r.levelParams, TypeChecker.rank(r)); checkType(r); env.add(r); }
-            trusted.add("nested inductive " + b.types.get(0).name + " (nested occurrences, auxiliary types and recursors not yet verified)");
-            return;
-        }
+        // 1. the declaration proper, as the kernel would receive it
         Decl.Inductive first = b.types.get(0);
+        List<IndSpec.Type> stypes = new ArrayList<>();
+        for (Decl.Inductive t : b.types) {
+            if (!t.levelParams.equals(first.levelParams)) throw new KernelException("mutual inductive types must have the same universe parameters");
+            if (t.numParams != first.numParams) throw new KernelException("mutual inductive types must have the same number of parameters");
+            if (t.isUnsafe != first.isUnsafe) throw new KernelException("mutual inductive types must agree on unsafe");
+            List<IndSpec.Ctor> cs = new ArrayList<>();
+            for (Name cn : t.ctors) {
+                Decl.Ctor c = null;
+                for (Decl.Ctor x : b.ctors) if (x.name.equals(cn)) c = x;
+                if (c == null) throw new KernelException("constructor " + cn + " listed by " + t.name + " is missing from the export");
+                cs.add(new IndSpec.Ctor(cn, c.type));
+            }
+            stypes.add(new IndSpec.Type(t.name, t.type, cs));
+        }
+        int nctors = 0;
+        for (IndSpec.Type t : stypes) nctors += t.ctors.size();
+        if (nctors != b.ctors.size()) throw new KernelException("export contains constructors that no inductive type lists");
+        IndSpec spec = new IndSpec(first.levelParams, first.numParams, first.isUnsafe, stypes);
+
+        // 2. eliminate nested occurrences, 3. check and generate in a scratch environment
         tc.begin(first.levelParams, TypeChecker.rank(first));
-        new InductiveChecker(env, tc, b).run();
+        NestedInductive nested = new NestedInductive(env, tc, spec);
+        IndSpec auxSpec = nested.run();
+        Env auxEnv = env.fork();
+        TypeChecker auxTc = new TypeChecker(auxEnv);
+        auxTc.begin(first.levelParams, TypeChecker.rank(first));
+        InductiveChecker.Result gen = new InductiveChecker(auxEnv, auxTc, auxSpec).run();
+
+        // 4. translate back and compare everything with what was exported
+        tc.begin(first.levelParams, TypeChecker.rank(first));
+        int k = b.types.size();
+        int nAux = auxSpec.types.size() - k;
+        Map<Name, Name> recRename = new HashMap<>();
+        for (int j = 0; j < nAux; j++)
+            recRename.put(Name.str(auxSpec.types.get(k + j).name, "rec"), Name.str(b.types.get(0).name, "rec_" + (j + 1)));
+        List<Name> all = spec.typeNames();
+        for (int i = 0; i < k; i++) {
+            Decl.Inductive t = b.types.get(i), g = gen.types.get(i);
+            if (t.numIndices != g.numIndices || t.isRec != g.isRec || t.isReflexive != g.isReflexive || t.numNested != nAux || !t.all.equals(all))
+                throw new KernelException("inductive type " + t.name + " has wrong bookkeeping: numIndices " + t.numIndices + "/" + g.numIndices
+                        + ", isRec " + t.isRec + "/" + g.isRec + ", isReflexive " + t.isReflexive + "/" + g.isReflexive + ", numNested " + t.numNested + "/" + nAux);
+        }
+        int ci = 0;
+        for (int i = 0; i < k; i++)
+            for (Name cn : b.types.get(i).ctors) {
+                Decl.Ctor c = null;
+                for (Decl.Ctor x : b.ctors) if (x.name.equals(cn)) c = x;
+                Decl.Ctor g = gen.ctors.get(ci++);
+                if (!g.name.equals(c.name) || c.cidx != g.cidx || c.numParams != g.numParams || c.numFields != g.numFields || c.isUnsafe != g.isUnsafe
+                        || !c.induct.equals(g.induct) || !c.levelParams.equals(g.levelParams))
+                    throw new KernelException("constructor " + c.name + " has wrong bookkeeping");
+            }
+        if (b.recs.size() != gen.recs.size())
+            throw new KernelException("export has " + b.recs.size() + " recursors but " + gen.recs.size() + " are expected");
+        for (int i = 0; i < gen.recs.size(); i++) {
+            Decl.Recursor g = gen.recs.get(i);
+            Name expectName = i < k ? g.name : Name.str(b.types.get(0).name, "rec_" + (i - k + 1));
+            Decl.Recursor r = null;
+            for (Decl.Recursor x : b.recs) if (x.name.equals(expectName)) r = x;
+            if (r == null) throw new KernelException("missing recursor " + expectName);
+            Expr type = nested.restore(g.type, true, auxEnv, recRename);
+            if (!type.equals(r.type))
+                throw new KernelException("recursor " + r.name + " has the wrong type\n  expected: " + type + "\n  exported: " + r.type);
+            if (!r.levelParams.equals(g.levelParams) || r.numParams != g.numParams || r.numIndices != g.numIndices || r.numMotives != g.numMotives
+                    || r.numMinors != g.numMinors || r.k != g.k || r.isUnsafe != g.isUnsafe || !r.all.equals(all))
+                throw new KernelException("recursor " + r.name + " has wrong bookkeeping");
+            if (r.rules.size() != g.rules.size()) throw new KernelException("recursor " + r.name + " has the wrong number of rules");
+            for (int j = 0; j < g.rules.size(); j++) {
+                Decl.RecRule gr = g.rules.get(j), rr = r.rules.get(j);
+                Name cname = nested.restoreCtorName(gr.ctor, auxEnv);
+                Expr rhs = nested.restore(gr.rhs, false, auxEnv, recRename);
+                if (!rr.ctor.equals(cname) || rr.nfields != gr.nfields)
+                    throw new KernelException("recursor rule for " + cname + " has the wrong constructor or field count");
+                if (!rhs.equals(rr.rhs))
+                    throw new KernelException("recursor rule for " + cname + " has the wrong right-hand side\n  expected: " + rhs + "\n  exported: " + rr.rhs);
+            }
+        }
+
+        // 5. everything matched: the exported declarations are now known to be exactly what the kernel derives
+        for (Decl.Inductive t : b.types) env.add(t);
+        for (Decl.Ctor c : b.ctors) env.add(c);
+        for (Decl.Recursor r : b.recs) env.add(r);
     }
 }

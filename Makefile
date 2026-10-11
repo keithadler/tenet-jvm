@@ -1,5 +1,5 @@
 JAVAC ?= javac
-SRC := $(wildcard src/main/java/leankernel/*.java)
+SRC := $(wildcard src/main/java/tenet/*.java)
 
 all: out/.built
 

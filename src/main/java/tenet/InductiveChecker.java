@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -8,20 +8,27 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Validates a (mutual, non-nested) inductive declaration group and regenerates its recursors, which are
- * then compared with the exported ones. This follows the construction in Lean 4's kernel
- * (add_inductive_fn): the exported recursors and rules are never trusted, only compared.
+ * Validates a (mutual, non-nested) inductive declaration and generates its constructors' bookkeeping and
+ * its recursors. This follows the construction in Lean 4's kernel (add_inductive_fn). The input is only
+ * the declaration proper (types and constructor types); everything else is derived here, never trusted.
  */
 final class InductiveChecker {
+    /** What the checker derives from a declaration. */
+    static final class Result {
+        final List<Decl.Inductive> types = new ArrayList<>();
+        final List<Decl.Ctor> ctors = new ArrayList<>();
+        final List<Decl.Recursor> recs = new ArrayList<>();
+    }
+
     private final Env env;
     private final TypeChecker tc;
-    private final InductiveBlock block;
+    private final IndSpec spec;
 
     private final List<Name> lparams;
     private final List<Level> levels = new ArrayList<>();
     private final int nparams;
     private final boolean isUnsafe;
-    private final List<Decl.Inductive> types;
+    private final List<IndSpec.Type> types;
     private final List<Expr> indConsts = new ArrayList<>();
     private final Set<Name> indNames = new HashSet<>();
     private final List<Expr> params = new ArrayList<>();
@@ -30,18 +37,19 @@ final class InductiveChecker {
     private boolean isNotZero;
     private Level elimLevel;
     private boolean kTarget;
+    private final Result result = new Result();
 
-    InductiveChecker(Env env, TypeChecker tc, InductiveBlock block) {
+    InductiveChecker(Env env, TypeChecker tc, IndSpec spec) {
         this.env = env;
         this.tc = tc;
-        this.block = block;
-        this.types = block.types;
-        this.lparams = types.get(0).levelParams;
+        this.spec = spec;
+        this.types = spec.types;
+        this.lparams = spec.lparams;
         for (Name n : lparams) levels.add(Level.param(n));
-        this.nparams = types.get(0).numParams;
-        this.isUnsafe = types.get(0).isUnsafe;
+        this.nparams = spec.nparams;
+        this.isUnsafe = spec.isUnsafe;
         this.nindices = new int[types.size()];
-        for (Decl.Inductive t : types) {
+        for (IndSpec.Type t : types) {
             indConsts.add(Expr.cnst(t.name, levels));
             indNames.add(t.name);
         }
@@ -49,7 +57,8 @@ final class InductiveChecker {
 
     private static KernelException err(String m) { return new KernelException(m); }
 
-    private static final Name OPT_PARAM = Name.of("optParam"), OUT_PARAM = Name.of("outParam"), AUTO_PARAM = Name.of("autoParam"), SEMI_OUT_PARAM = Name.of("semiOutParam");
+    private static final Name OPT_PARAM = Name.of("optParam"), OUT_PARAM = Name.of("outParam"), AUTO_PARAM = Name.of("autoParam"),
+            SEMI_OUT_PARAM = Name.of("semiOutParam");
 
     /** Lean's consume_type_annotations: strips optParam / outParam / autoParam wrappers from a binder type. */
     static Expr consumeTypeAnnotations(Expr e) {
@@ -70,9 +79,7 @@ final class InductiveChecker {
 
     // ---- helpers -----------------------------------------------------------
 
-    private boolean hasIndOcc(Expr e) {
-        return hasIndOcc(e, new IdentityHashMap<>());
-    }
+    private boolean hasIndOcc(Expr e) { return hasIndOcc(e, new IdentityHashMap<>()); }
 
     private boolean hasIndOcc(Expr e, Map<Expr, Boolean> seen) {
         switch (e.kind) {
@@ -120,14 +127,15 @@ final class InductiveChecker {
 
     // ---- main entry --------------------------------------------------------
 
-    void run() {
+    Result run() {
         checkInductiveTypes();
         declareInductiveTypes();
         checkConstructors();
         declareConstructors();
         initElimLevel();
         initKTarget();
-        checkAndDeclareRecursors();
+        generateRecursors();
+        return result;
     }
 
     // ---- types -------------------------------------------------------------
@@ -135,12 +143,10 @@ final class InductiveChecker {
     private void checkInductiveTypes() {
         boolean first = true;
         for (int idx = 0; idx < types.size(); idx++) {
-            Decl.Inductive ind = types.get(idx);
-            if (!ind.levelParams.equals(lparams)) throw err("mutual inductive types must have the same universe parameters");
-            if (ind.numParams != nparams) throw err("mutual inductive types must have the same number of parameters");
-            if (ind.isUnsafe != isUnsafe) throw err("mutual inductive types must agree on unsafe");
+            IndSpec.Type ind = types.get(idx);
             if (env.contains(ind.name)) throw err("already declared: " + ind.name);
             Expr type = ind.type;
+            if (type.hasFVar || type.looseBVarRange > 0) throw err("inductive type has free variables: " + ind.name);
             tc.ensureSort(tc.check(type), type);
             int i = 0, nidx = 0;
             while (type.kind == Expr.Kind.PI) {
@@ -171,37 +177,60 @@ final class InductiveChecker {
                 throw err("mutually inductive types must live in the same universe");
             }
             nindices[idx] = nidx;
-            if (ind.numIndices != nidx) throw err("exported number of indices of " + ind.name + " is wrong");
         }
     }
 
+    /** Syntactic: does any constructor binder mention one of the types being declared? */
+    private boolean computeIsRec() {
+        for (IndSpec.Type ind : types)
+            for (IndSpec.Ctor c : ind.ctors) {
+                Expr t = c.type;
+                while (t.kind == Expr.Kind.PI) {
+                    if (hasIndOcc(((Expr.Binder) t).type)) return true;
+                    t = ((Expr.Binder) t).body;
+                }
+            }
+        return false;
+    }
+
+    private boolean computeIsReflexive() {
+        for (IndSpec.Type ind : types)
+            for (IndSpec.Ctor c : ind.ctors) {
+                Expr t = c.type;
+                while (t.kind == Expr.Kind.PI) {
+                    Expr.Binder b = (Expr.Binder) t;
+                    if (b.type.kind == Expr.Kind.PI && hasIndOcc(b.type)) return true;
+                    t = b.body;
+                }
+            }
+        return false;
+    }
+
     private void declareInductiveTypes() {
-        // isRec / isReflexive are recomputed after constructors are known; the exported values are compared later
-        for (Decl.Inductive t : types) env.add(t);
+        boolean isRec = computeIsRec(), isReflexive = computeIsReflexive();
+        List<Name> all = spec.typeNames();
+        for (int idx = 0; idx < types.size(); idx++) {
+            IndSpec.Type t = types.get(idx);
+            List<Name> cnames = new ArrayList<>();
+            for (IndSpec.Ctor c : t.ctors) cnames.add(c.name);
+            Decl.Inductive d = new Decl.Inductive(t.name, lparams, t.type, nparams, nindices[idx], all, cnames, 0, isRec, isUnsafe, isReflexive);
+            result.types.add(d);
+            env.add(d);
+        }
     }
 
     // ---- constructors ------------------------------------------------------
 
     private void checkConstructors() {
-        List<Name> seenCtors = new ArrayList<>();
         for (int idx = 0; idx < types.size(); idx++) {
-            Decl.Inductive ind = types.get(idx);
-            int cidx = 0;
-            for (Name cn : ind.ctors) {
-                Decl.Ctor c = findCtor(cn);
-                if (c == null) throw err("constructor " + cn + " listed by " + ind.name + " is missing from the export");
-                seenCtors.add(cn);
+            IndSpec.Type ind = types.get(idx);
+            for (IndSpec.Ctor c : ind.ctors) {
+                Name cn = c.name;
                 if (env.contains(cn)) throw err("already declared: " + cn);
-                if (!c.induct.equals(ind.name)) throw err("constructor " + cn + " belongs to the wrong inductive type");
-                if (c.cidx != cidx) throw err("constructor " + cn + " has the wrong index");
-                if (!c.levelParams.equals(lparams)) throw err("constructor " + cn + " has different universe parameters");
-                if (c.numParams != nparams) throw err("constructor " + cn + " has the wrong number of parameters");
-                if (c.isUnsafe != isUnsafe) throw err("constructor " + cn + " has the wrong unsafe flag");
-                cidx++;
                 Expr t = c.type;
                 if (t.hasFVar || t.looseBVarRange > 0) throw err("constructor type has free variables: " + cn);
                 tc.ensureSort(tc.check(t), t);
-                int i = 0, nfields = 0;
+                int i = 0;
                 while (t.kind == Expr.Kind.PI) {
                     Expr.Binder b = (Expr.Binder) t;
                     if (i < nparams) {
@@ -215,7 +244,6 @@ final class InductiveChecker {
                         if (!isUnsafe) checkPositivity(b.type, cn, i);
                         Expr l = localFor(b);
                         t = Expr.instantiate1(b.body, l);
-                        nfields++;
                     }
                     i++;
                 }
@@ -223,15 +251,8 @@ final class InductiveChecker {
                 if (!isValidIndApp(t, idx)) throw err("invalid return type for '" + cn + "'");
                 for (Expr ia : t.getAppArgs().subList(nparams, t.getAppNumArgs()))
                     if (hasIndOcc(ia)) throw err("inductive occurrence in an index of the result type of '" + cn + "'");
-                if (c.numFields != nfields) throw err("constructor " + cn + " has the wrong number of fields");
             }
         }
-        if (seenCtors.size() != block.ctors.size()) throw err("export contains constructors that no inductive type lists");
-    }
-
-    private Decl.Ctor findCtor(Name n) {
-        for (Decl.Ctor c : block.ctors) if (c.name.equals(n)) return c;
-        return null;
     }
 
     private void checkPositivity(Expr t, Name cn, int argIdx) {
@@ -248,45 +269,20 @@ final class InductiveChecker {
     }
 
     private void declareConstructors() {
-        for (Decl.Ctor c : block.ctors) env.add(c);
-        // compare the informational flags on the inductive types with what the constructors imply
-        boolean anyRec = false, anyReflexive = false;
-        for (Decl.Inductive ind : types) {
-            boolean isRec = false, isReflexive = false;
-            for (Name cn : ind.ctors) {
-                Decl.Ctor c = findCtor(cn);
-                Expr t = c.type;
-                int i = 0;
-                while (t.kind == Expr.Kind.PI) {
-                    Expr.Binder b = (Expr.Binder) t;
-                    if (i < nparams) {
-                        t = Expr.instantiate1(b.body, params.get(i));
-                    } else {
-                        if (isRecArgument(b.type)) {
-                            isRec = true;
-                            if (tc.whnf(b.type).kind == Expr.Kind.PI) isReflexive = true;
-                        }
-                        Expr l = localFor(b);
-                        t = Expr.instantiate1(b.body, l);
-                    }
+        for (int idx = 0; idx < types.size(); idx++) {
+            IndSpec.Type ind = types.get(idx);
+            int cidx = 0;
+            for (IndSpec.Ctor c : ind.ctors) {
+                int nfields = 0, i = 0;
+                for (Expr t = c.type; t.kind == Expr.Kind.PI; t = ((Expr.Binder) t).body) {
+                    if (i >= nparams) nfields++;
                     i++;
                 }
+                Decl.Ctor d = new Decl.Ctor(c.name, lparams, c.type, ind.name, cidx++, nparams, nfields, isUnsafe);
+                result.ctors.add(d);
+                env.add(d);
             }
-            anyRec |= isRec;
-            anyReflexive |= isReflexive;
         }
-        for (Decl.Inductive ind : types) {
-            if (ind.isRec != anyRec) throw err("exported isRec flag of " + ind.name + " is wrong");
-            if (ind.isReflexive != anyReflexive) throw err("exported isReflexive flag of " + ind.name + " is wrong");
-            if (ind.numNested != 0) throw err("unexpected nested count for " + ind.name);
-            if (!ind.all.equals(names(types))) throw err("exported 'all' of " + ind.name + " is wrong");
-        }
-    }
-
-    private static List<Name> names(List<Decl.Inductive> ts) {
-        List<Name> r = new ArrayList<>();
-        for (Decl.Inductive t : ts) r.add(t.name);
-        return r;
     }
 
     // ---- eliminator universe -----------------------------------------------
@@ -294,12 +290,11 @@ final class InductiveChecker {
     private boolean elimOnlyAtUniverseZero() {
         if (isNotZero) return false;
         if (types.size() > 1) return true;
-        Decl.Inductive ind = types.get(0);
+        IndSpec.Type ind = types.get(0);
         int n = ind.ctors.size();
         if (n > 1) return true;
         if (n == 0) return false;
-        Decl.Ctor c = findCtor(ind.ctors.get(0));
-        Expr t = c.type;
+        Expr t = ind.ctors.get(0).type;
         int i = 0;
         List<Expr> toCheck = new ArrayList<>();
         while (t.kind == Expr.Kind.PI) {
@@ -333,7 +328,7 @@ final class InductiveChecker {
     private void initKTarget() {
         kTarget = types.size() == 1 && resultLevel.isZero() && types.get(0).ctors.size() == 1;
         if (!kTarget) return;
-        Expr it = findCtor(types.get(0).ctors.get(0)).type;
+        Expr it = types.get(0).ctors.get(0).type;
         int i = 0;
         while (it.kind == Expr.Kind.PI) {
             if (i < nparams) it = ((Expr.Binder) it).body;
@@ -348,15 +343,46 @@ final class InductiveChecker {
         Expr motive;
         List<Expr> indices = new ArrayList<>();
         Expr major;
-        List<Expr> minors = new ArrayList<>();
     }
 
     private Name recName(int idx) { return Name.str(types.get(idx).name, "rec"); }
 
-    private void checkAndDeclareRecursors() {
+    /** Fields (all non-parameter binders) of a constructor, with the recursive ones also listed in u. */
+    private Expr ctorTelescope(IndSpec.Ctor c, List<Expr> bu, List<Expr> u) {
+        Expr t = c.type;
+        int i = 0;
+        while (t.kind == Expr.Kind.PI) {
+            Expr.Binder b = (Expr.Binder) t;
+            if (i < nparams) {
+                t = Expr.instantiate1(b.body, params.get(i));
+            } else {
+                Expr l = localFor(b);
+                bu.add(l);
+                if (isRecArgument(b.type)) u.add(l);
+                t = Expr.instantiate1(b.body, l);
+            }
+            i++;
+        }
+        return t;
+    }
+
+    /** For a recursive field u_i: its telescope xs, the index k of the type it recurses on, and that type's indices. */
+    private int recFieldInfo(Expr ui, List<Expr> xs, List<Expr> kIndices) {
+        Expr uiTy = tc.whnf(tc.local(ui).type);
+        while (uiTy.kind == Expr.Kind.PI) {
+            Expr.Binder b = (Expr.Binder) uiTy;
+            Expr x = localFor(b);
+            xs.add(x);
+            uiTy = tc.whnf(Expr.instantiate1(b.body, x));
+        }
+        int k = validIndAppIdx(uiTy);
+        kIndices.addAll(uiTy.getAppArgs().subList(nparams, uiTy.getAppNumArgs()));
+        return k;
+    }
+
+    private void generateRecursors() {
         int n = types.size();
         RecInfo[] infos = new RecInfo[n];
-        // motives and majors
         for (int d = 0; d < n; d++) {
             RecInfo info = new RecInfo();
             Expr t = types.get(d).type;
@@ -382,66 +408,38 @@ final class InductiveChecker {
             info.motive = tc.mkLocal(cName, cTy, "implicit");
             infos[d] = info;
         }
-        // minor premises
         List<Expr> allMinors = new ArrayList<>();
         List<Expr> allMotives = new ArrayList<>();
         for (RecInfo info : infos) allMotives.add(info.motive);
         for (int d = 0; d < n; d++) {
-            for (Name cn : types.get(d).ctors) {
-                Decl.Ctor c = findCtor(cn);
+            for (IndSpec.Ctor c : types.get(d).ctors) {
                 List<Expr> bu = new ArrayList<>(), u = new ArrayList<>(), v = new ArrayList<>();
-                Expr t = c.type;
-                int i = 0;
-                while (t.kind == Expr.Kind.PI) {
-                    Expr.Binder b = (Expr.Binder) t;
-                    if (i < nparams) {
-                        t = Expr.instantiate1(b.body, params.get(i));
-                    } else {
-                        Expr l = localFor(b);
-                        bu.add(l);
-                        if (isRecArgument(b.type)) u.add(l);
-                        t = Expr.instantiate1(b.body, l);
-                    }
-                    i++;
-                }
+                Expr t = ctorTelescope(c, bu, u);
                 int itIdx = validIndAppIdx(t);
                 List<Expr> itIndices = t.getAppArgs().subList(nparams, t.getAppNumArgs());
-                Expr introApp = Expr.apps(Expr.apps(Expr.cnst(cn, levels), params), bu);
+                Expr introApp = Expr.apps(Expr.apps(Expr.cnst(c.name, levels), params), bu);
                 Expr cApp = Expr.app(Expr.apps(infos[itIdx].motive, itIndices), introApp);
                 for (Expr ui : u) {
-                    Expr uiTy = tc.whnf(tc.local(ui).type);
-                    List<Expr> xs = new ArrayList<>();
-                    while (uiTy.kind == Expr.Kind.PI) {
-                        Expr.Binder b = (Expr.Binder) uiTy;
-                        Expr x = localFor(b);
-                        xs.add(x);
-                        uiTy = tc.whnf(Expr.instantiate1(b.body, x));
-                    }
-                    int k = validIndAppIdx(uiTy);
-                    List<Expr> kIndices = uiTy.getAppArgs().subList(nparams, uiTy.getAppNumArgs());
+                    List<Expr> xs = new ArrayList<>(), kIndices = new ArrayList<>();
+                    int k = recFieldInfo(ui, xs, kIndices);
                     Expr ihApp = Expr.app(Expr.apps(infos[k].motive, kIndices), Expr.apps(ui, xs));
-                    Expr vTy = tc.mkPi(xs, ihApp);
-                    v.add(tc.mkLocal(Name.str(tc.local(ui).name, "ih"), vTy, "default"));
+                    v.add(tc.mkLocal(Name.str(tc.local(ui).name, "ih"), tc.mkPi(xs, ihApp), "default"));
                 }
                 List<Expr> bv = new ArrayList<>(bu);
                 bv.addAll(v);
-                Expr minorTy = tc.mkPi(bv, cApp);
-                Expr minor = tc.mkLocal(Name.of("minor"), minorTy, "default");
-                infos[d].minors.add(minor);
-                allMinors.add(minor);
+                allMinors.add(tc.mkLocal(Name.of("minor"), tc.mkPi(bv, cApp), "default"));
             }
         }
-        // build and compare each recursor
-        int nMinorsTotal = allMinors.size();
-        if (block.recs.size() != n) throw err("export has " + block.recs.size() + " recursors but the block has " + n + " inductive types");
+        int nMinors = allMinors.size();
+        List<Name> all = spec.typeNames();
+        List<Name> recLps = new ArrayList<>();
+        if (elimLevel.kind == Level.Kind.PARAM) recLps.add(((Level.Param) elimLevel).name);
+        recLps.addAll(lparams);
+        List<Level> recLevels = new ArrayList<>();
+        for (Name ln : recLps) recLevels.add(Level.param(ln));
+        int minorIdx = 0;
         for (int d = 0; d < n; d++) {
-            Decl.Recursor rec = recByName(recName(d));
-            if (rec == null) throw err("missing recursor " + recName(d));
             RecInfo info = infos[d];
-            List<Name> expectLps = new ArrayList<>();
-            if (elimLevel.kind == Level.Kind.PARAM) expectLps.add(((Level.Param) elimLevel).name);
-            expectLps.addAll(lparams);
-            if (!rec.levelParams.equals(expectLps)) throw err("recursor " + rec.name + " has wrong universe parameters: " + rec.levelParams + " vs " + expectLps);
             Expr majorApp = Expr.app(Expr.apps(info.motive, info.indices), info.major);
             List<Expr> binders = new ArrayList<>(params);
             binders.addAll(allMotives);
@@ -449,50 +447,13 @@ final class InductiveChecker {
             binders.addAll(info.indices);
             binders.add(info.major);
             Expr recTy = tc.mkPi(binders, majorApp);
-            if (!recTy.equals(rec.type))
-                throw err("recursor " + rec.name + " has the wrong type\n  expected: " + recTy + "\n  exported: " + rec.type);
-            if (rec.numParams != nparams || rec.numIndices != nindices[d] || rec.numMotives != n || rec.numMinors != nMinorsTotal)
-                throw err("recursor " + rec.name + " has wrong counts");
-            if (rec.k != kTarget) throw err("recursor " + rec.name + " has the wrong K flag");
-            if (rec.isUnsafe != isUnsafe) throw err("recursor " + rec.name + " has the wrong unsafe flag");
-            if (!rec.all.equals(names(types))) throw err("recursor " + rec.name + " has the wrong 'all'");
-            // rules
-            List<Level> recLevels = new ArrayList<>();
-            for (Name ln : rec.levelParams) recLevels.add(Level.param(ln));
-            Decl.Inductive ind = types.get(d);
-            if (rec.rules.size() != ind.ctors.size()) throw err("recursor " + rec.name + " has the wrong number of rules");
-            int minorIdx = 0;
-            for (int dd = 0; dd < d; dd++) minorIdx += types.get(dd).ctors.size();
-            for (int ci = 0; ci < ind.ctors.size(); ci++) {
-                Name cn = ind.ctors.get(ci);
-                Decl.Ctor c = findCtor(cn);
-                List<Expr> bu = new ArrayList<>(), u = new ArrayList<>();
-                Expr t = c.type;
-                int i = 0;
-                while (t.kind == Expr.Kind.PI) {
-                    Expr.Binder b = (Expr.Binder) t;
-                    if (i < nparams) {
-                        t = Expr.instantiate1(b.body, params.get(i));
-                    } else {
-                        Expr l = localFor(b);
-                        bu.add(l);
-                        if (isRecArgument(b.type)) u.add(l);
-                        t = Expr.instantiate1(b.body, l);
-                    }
-                    i++;
-                }
-                List<Expr> v = new ArrayList<>();
+            List<Decl.RecRule> rules = new ArrayList<>();
+            for (IndSpec.Ctor c : types.get(d).ctors) {
+                List<Expr> bu = new ArrayList<>(), u = new ArrayList<>(), v = new ArrayList<>();
+                ctorTelescope(c, bu, u);
                 for (Expr ui : u) {
-                    Expr uiTy = tc.whnf(tc.local(ui).type);
-                    List<Expr> xs = new ArrayList<>();
-                    while (uiTy.kind == Expr.Kind.PI) {
-                        Expr.Binder b = (Expr.Binder) uiTy;
-                        Expr x = localFor(b);
-                        xs.add(x);
-                        uiTy = tc.whnf(Expr.instantiate1(b.body, x));
-                    }
-                    int k = validIndAppIdx(uiTy);
-                    List<Expr> kIndices = uiTy.getAppArgs().subList(nparams, uiTy.getAppNumArgs());
+                    List<Expr> xs = new ArrayList<>(), kIndices = new ArrayList<>();
+                    int k = recFieldInfo(ui, xs, kIndices);
                     Expr recApp = Expr.apps(Expr.cnst(recName(k), recLevels), params);
                     recApp = Expr.apps(recApp, allMotives);
                     recApp = Expr.apps(recApp, allMinors);
@@ -500,24 +461,16 @@ final class InductiveChecker {
                     recApp = Expr.app(recApp, Expr.apps(ui, xs));
                     v.add(tc.mkLambda(xs, recApp));
                 }
-                Expr eApp = Expr.apps(Expr.apps(allMinors.get(minorIdx + ci), bu), v);
+                Expr eApp = Expr.apps(Expr.apps(allMinors.get(minorIdx++), bu), v);
                 List<Expr> lamBinders = new ArrayList<>(params);
                 lamBinders.addAll(allMotives);
                 lamBinders.addAll(allMinors);
                 lamBinders.addAll(bu);
-                Expr rhs = tc.mkLambda(lamBinders, eApp);
-                Decl.RecRule rule = rec.rules.get(ci);
-                if (!rule.ctor.equals(cn) || rule.nfields != bu.size())
-                    throw err("recursor rule for " + cn + " has the wrong constructor or field count");
-                if (!rhs.equals(rule.rhs))
-                    throw err("recursor rule for " + cn + " has the wrong right-hand side\n  expected: " + rhs + "\n  exported: " + rule.rhs);
+                rules.add(new Decl.RecRule(c.name, bu.size(), tc.mkLambda(lamBinders, eApp)));
             }
+            Decl.Recursor rec = new Decl.Recursor(recName(d), recLps, recTy, all, nparams, nindices[d], n, nMinors, rules, kTarget, isUnsafe);
+            result.recs.add(rec);
+            env.add(rec);
         }
-        for (Decl.Recursor r : block.recs) env.add(r);
-    }
-
-    private Decl.Recursor recByName(Name n) {
-        for (Decl.Recursor r : block.recs) if (r.name.equals(n)) return r;
-        return null;
     }
 }

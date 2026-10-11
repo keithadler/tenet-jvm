@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 /** Raised when a declaration is rejected. */
 @SuppressWarnings("serial")

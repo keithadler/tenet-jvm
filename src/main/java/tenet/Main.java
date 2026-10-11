@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.Map;
 
-/** Command line: java -jar leankernel.jar [--keep-going] export.ndjson  (or - for stdin). */
+/** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
     private static final boolean TRACE = System.getenv("LEANKERNEL_TRACE") != null;
 
@@ -32,7 +32,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: leankernel [--keep-going] <export.ndjson | ->");
+        System.err.println("usage: tenet-jvm [--keep-going] <export.ndjson | ->");
     }
 
     private static int run(String file, boolean keepGoing) {

@@ -1,4 +1,4 @@
-# leankernel-java
+# tenet-jvm
 
 An independent kernel (type checker) for [Lean 4](https://lean-lang.org), written in Java.
 It reads the NDJSON output of [`lean4export`](https://github.com/leanprover/lean4export) and
@@ -6,9 +6,9 @@ re-checks every declaration from scratch.
 
 ## Why this exists
 
-This project is not a flag-planting exercise. The author intends to maintain it fully, alongside
-[Tenet](https://www.nuget.org/packages/tenet) (C#) and the other independent checkers in the Lean
-ecosystem ([nanoda](https://github.com/ammkrn/nanoda_lib), [lean4lean](https://github.com/digama0/lean4lean)).
+tenet-jvm is the JVM counterpart to [Tenet](https://www.nuget.org/packages/tenet) (C#/.NET). It is not a
+flag-planting exercise: the author intends to maintain it fully, alongside Tenet and the rest of the Lean
+verification chain, and the other independent checkers in the Lean ecosystem ([nanoda](https://github.com/ammkrn/nanoda_lib), [lean4lean](https://github.com/digama0/lean4lean)).
 
 The more independent kernels that verify the same proof, the better. A soundness bug in one
 implementation is unlikely to appear in another written separately, in a different language, by
@@ -34,7 +34,7 @@ Requires JDK 21 or later.
 
 ```
 make
-java -cp out leankernel.Main export.ndjson
+java -cp out tenet.Main export.ndjson
 ```
 
 Produce an export with `lean4export`:

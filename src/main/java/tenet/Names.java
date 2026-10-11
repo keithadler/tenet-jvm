@@ -1,4 +1,4 @@
-package leankernel;
+package tenet;
 
 /** Names of constants the kernel treats specially. */
 public final class Names {
