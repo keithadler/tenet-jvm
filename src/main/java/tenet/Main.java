@@ -11,7 +11,7 @@ import java.util.Map;
 
 /** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
-    private static final boolean TRACE = System.getenv("LEANKERNEL_TRACE") != null;
+    private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
 
     public static void main(String[] args) throws Exception {
         boolean keepGoing = false;
@@ -24,8 +24,19 @@ public final class Main {
         if (file == null) { usage(); System.exit(64); }
         final boolean kg = keepGoing;
         final String f = file;
-        int[] code = {0};
-        Thread t = new Thread(null, () -> code[0] = run(f, kg), "checker", 4L << 30);
+        // Fail closed: unless run() returns normally the verdict is "error", never "accepted".
+        int[] code = {3};
+        Thread t = new Thread(null, () -> {
+            try {
+                code[0] = run(f, kg);
+            } catch (KernelException e) {
+                System.out.println("REJECTED malformed export: " + e.getMessage());
+                code[0] = 1;
+            } catch (Throwable e) {
+                System.out.println("ERROR " + e);
+                code[0] = 3;
+            }
+        }, "checker", 4L << 30);
         t.start();
         t.join();
         System.exit(code[0]);

@@ -24,7 +24,6 @@ public final class TypeChecker {
     }
 
     private static long fvarCounter = 0;
-    private static final boolean DEBUG_NAT = System.getenv("LEANKERNEL_DEBUG_NAT") != null;
 
     public final Env env;
     private List<Name> lparams = List.of();
@@ -40,8 +39,7 @@ public final class TypeChecker {
     private Set<List<Expr>> eqCache = new HashSet<>();
     private Set<List<Expr>> failCache = new HashSet<>();
 
-    static TypeChecker CURRENT;
-    public TypeChecker(Env env) { this.env = env; CURRENT = this; }
+    public TypeChecker(Env env) { this.env = env; }
 
     private static Map<Expr, Expr> fresh(Map<Expr, Expr> m) {
         if (m.size() > 256) return new HashMap<>();
@@ -455,8 +453,6 @@ public final class TypeChecker {
     }
 
     static Expr natLitToCtor(BigInteger v) {
-        if (DEBUG_NAT && v.compareTo(BigInteger.valueOf(100000)) > 0 && v.bitLength() < 64 && (v.longValue() & 0xFFFFF) == 0)
-            { System.err.println("natLitToCtor " + v); CURRENT.dumpDbgStack(); System.exit(3); }
         if (v.signum() == 0) return Expr.cnst(Names.NAT_ZERO, List.of());
         return Expr.app(Expr.cnst(Names.NAT_SUCC, List.of()), Expr.nat(v.subtract(BigInteger.ONE)));
     }
@@ -602,27 +598,10 @@ public final class TypeChecker {
 
     // ---- definitional equality --------------------------------------------
 
-    private final java.util.ArrayDeque<Expr[]> dbgStack = new java.util.ArrayDeque<>();
-
     public boolean isDefEq(Expr t, Expr s) {
-        if (DEBUG_NAT) dbgStack.push(new Expr[] {t, s});
         boolean r = isDefEqCore(t, s);
-        if (DEBUG_NAT) dbgStack.pop();
         if (r) eqCache.add(List.of(t, s));
         return r;
-    }
-
-    private final java.util.ArrayDeque<String> ring = new java.util.ArrayDeque<>();
-
-    void dumpDbgStack() {
-        for (String r : ring) System.err.println(r);
-        int n = 0;
-        for (Expr[] p : dbgStack) {
-            String a = p[0].toString(), b = p[1].toString();
-            System.err.println("  [" + n + "] " + a.substring(0, Math.min(400, a.length())) + "\n      =?= " + b.substring(0, Math.min(400, b.length())));
-            if (n == 0) { try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/pair0.txt"), a + "\n=?=\n" + b); } catch (Exception ex) { } }
-            if (++n >= 6) break;
-        }
     }
 
     private static final int UNDEF = -1, FALSE = 0, TRUE = 1;
@@ -728,14 +707,7 @@ public final class TypeChecker {
 
     private boolean isDefEqArgs(Expr t, Expr s) {
         while (t.kind == Expr.Kind.APP && s.kind == Expr.Kind.APP) {
-            if (!isDefEq(((Expr.App) t).arg, ((Expr.App) s).arg)) {
-                if (DEBUG_NAT) {
-                    String a = ((Expr.App) t).arg.toString(), b = ((Expr.App) s).arg.toString();
-                    ring.addLast("ARGFAIL head=" + t.getAppFn() + "\n   " + a.substring(0, Math.min(900, a.length())) + "\n   =?= " + b.substring(0, Math.min(900, b.length())));
-                    if (ring.size() > 4) ring.removeFirst();
-                }
-                return false;
-            }
+            if (!isDefEq(((Expr.App) t).arg, ((Expr.App) s).arg)) return false;
             t = ((Expr.App) t).fn;
             s = ((Expr.App) s).fn;
         }
@@ -833,13 +805,6 @@ public final class TypeChecker {
     private int lazyDeltaStep(Expr[] st) {
         Expr t = st[0], s = st[1];
         Decl dt = deltaInfo(t), ds = deltaInfo(s);
-        if (DEBUG_NAT) {
-            String a = t.getAppFn() instanceof Expr.Const ? ((Expr.Const) t.getAppFn()).name.toString() : t.getAppFn().kind.toString();
-            String b = s.getAppFn() instanceof Expr.Const ? ((Expr.Const) s.getAppFn()).name.toString() : s.getAppFn().kind.toString();
-            String cmp = dt != null && ds != null ? " cmp=" + compareHints(dt, ds) + " ht=" + (dt instanceof Decl.Def ? ((Decl.Def) dt).hints + ((Decl.Def) dt).height : "thm") + " hs=" + (ds instanceof Decl.Def ? ((Decl.Def) ds).hints + ((Decl.Def) ds).height : "thm") : "";
-            System.err.println("STEP depth=" + dbgStack.size() + " " + a + " | " + b + cmp);
-            if (a.equals("Sub.sub") || a.equals("Nat.sub")) { if (s.getAppFn() instanceof Expr.Proj) { Expr pstruct = ((Expr.Proj) s.getAppFn()).struct; Expr w = whnf(pstruct); String ws = w.toString(); System.err.println("   WHNF(struct)=" + ws.substring(0, Math.min(300, ws.length())) + "  headkind=" + w.getAppFn().kind + " tc=" + (w.getAppFn() instanceof Expr.Const ? env.get(((Expr.Const) w.getAppFn()).name) : null)); } String ts = t.toString(), ss = s.toString(); System.err.println("   T=" + ts.substring(0, Math.min(500, ts.length())) + "\n   S=" + ss.substring(0, Math.min(700, ss.length()))); }
-        }
         if (dt == null && ds == null) return DEF_UNKNOWN;
         if (dt != null && ds == null) {
             // The other side may only be stuck on a projection that a full whnfCore can reduce; do that
@@ -883,7 +848,6 @@ public final class TypeChecker {
                 st[1] = whnfCore(us, false, true);
             }
         }
-        if (DEBUG_NAT) System.err.println("   after: " + st[0].getAppFn().kind + (st[0].getAppFn() instanceof Expr.Const ? ":" + ((Expr.Const) st[0].getAppFn()).name : "") + " | " + st[1].getAppFn().kind + (st[1].getAppFn() instanceof Expr.Const ? ":" + ((Expr.Const) st[1].getAppFn()).name : ""));
         return afterStep(st);
     }
 
