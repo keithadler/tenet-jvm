@@ -234,7 +234,9 @@ public final class TypeChecker {
         if (ind.ctors.size() != 1 || ind.numIndices != 0) throw new KernelException("invalid projection, not a structure: " + ic.name);
         List<Expr> args = structType.getAppArgs();
         if (args.size() != ind.numParams) throw new KernelException("invalid projection, wrong number of parameters: " + p);
-        Decl.Ctor ctor = (Decl.Ctor) env.get(ind.ctors.get(0));
+        Decl cd = env.get(ind.ctors.get(0));
+        if (!(cd instanceof Decl.Ctor)) throw new KernelException("invalid projection, unknown constructor " + ind.ctors.get(0));
+        Decl.Ctor ctor = (Decl.Ctor) cd;
         Expr ct = Expr.instantiateLevelParams(ctor.type, ctor.levelParams, ic.levels);
         for (Expr a : args) {
             ct = whnf(ct);
