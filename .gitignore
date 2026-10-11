@@ -1,3 +1,4 @@
 out/
 *.ndjson
+!tests/exports/nat_add_comm.ndjson
 .DS_Store
