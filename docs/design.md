@@ -106,8 +106,8 @@ recursors appear as `I.rec_1`, `I.rec_2`, ….
 
 A checker's worst failure is saying "accepted" when it did not check. `Main` therefore starts from the
 verdict *error*, sets it to *accepted* only after the whole file has been processed with no rejection, and
-turns every exception into a non-zero exit. A malformed export (an undefined name or expression id) is a
-rejection.
+turns every exception into a non-zero exit. A malformed export (an undefined name or expression id, no
+metadata record, an unsupported format version, an empty file) is a rejection.
 
 Exit codes: `0` accepted, `1` rejected, `2` declined (reserved; nothing is declined today), `3` internal
 error or unreadable input, `64` usage.

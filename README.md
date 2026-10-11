@@ -52,7 +52,7 @@ bin/tenet-jvm ../init.ndjson
 | | `Std` (includes `Init`): 99,619 constants, 1,028 groups | all verified, ≈ 45 s |
 | | `Lean` (includes both): 171,705 constants, 2,860 groups | all verified, ≈ 55 s |
 | Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (215 tests) | 197 decided tests right (and 18 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
-| Mutation tests | 16 targeted corruptions of a valid export | 16 rejected, for the intended reason |
+| Mutation tests | 16 targeted corruptions of a valid export, 6 inputs that are not exports | all rejected, for the intended reason |
 | Not yet | Mathlib, `cedar`, `cslib`, `navier-stokes-euler`, `con-leche` | not run |
 
 Lean 4.35.0-rc4 exports, JDK 21, an Apple-silicon laptop that was not idle. Times are indicative.
@@ -63,7 +63,7 @@ There is nothing to install beyond a JDK.
 
 ```sh
 make            # compiles to out/
-make test       # 16 mutation tests + a valid export
+make test       # 16 mutation tests, 6 malformed inputs, and a valid export
 ```
 
 `bin/tenet-jvm` is a small launcher that sets sensible JVM options (throughput collector, most of the
@@ -139,7 +139,8 @@ does not is, in order of strength: the arena's `bugs/` group contains exports of
 (including some in the official kernel), all of which are rejected; the mutation tests corrupt a valid
 export sixteen different ways and require rejection with the intended reason; and the first run of the
 arena found three genuine errors in this implementation (two soundness holes and a wrong rejection), which
-are fixed. A fourth, a crash that exited with the "accepted" code, was found by the mutation tests.
+are fixed. Two more were found by the mutation tests and by running a pipeline: a crash that exited with the
+"accepted" code, and an empty input that was accepted as a vacuously valid export. Both now fail closed.
 
 ## Other checkers
 

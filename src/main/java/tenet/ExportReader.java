@@ -65,8 +65,10 @@ public final class ExportReader {
             if (line.isEmpty()) continue;
             lines++;
             Map<String, Object> o = m(Json.parse(line));
+            if (lines == 1 && !o.containsKey("meta")) throw new KernelException("not a lean4export file: the first line is not the metadata record");
             handle(o, sink);
         }
+        if (lines == 0) throw new KernelException("empty input: not a lean4export file");
     }
 
     private void handle(Map<String, Object> o, Consumer<Object> sink) {
@@ -74,6 +76,7 @@ public final class ExportReader {
             Map<String, Object> meta = m(o.get("meta"));
             formatVersion = String.valueOf(m(meta.get("format")).get("version"));
             leanVersion = String.valueOf(m(meta.get("lean")).get("version"));
+            if (!formatVersion.startsWith("3.")) throw new KernelException("unsupported export format version " + formatVersion + " (this checker reads 3.x)");
         } else if (o.containsKey("in")) {
             int id = i(o.get("in"));
             names = grow(names, id);

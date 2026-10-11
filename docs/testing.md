@@ -53,15 +53,19 @@ test. All three came from the same two causes, a syntactic zero test on universe
 mutants: a theorem given the wrong proof, a definition given the wrong type, an undeclared universe, swapped
 recursor rules, a wrong field count in a rule, a recursor given another type's type, flipped `k`, `isRec`,
 `numParams`, `numIndices`, `numNested` flags, a constructor dropped from its type, a wrong `cidx`, a wrong
-`numFields`, and an extra orphan recursor. It also checks that the unmodified export is accepted.
+`numFields`, and an extra orphan recursor. It also feeds six things that are not exports (an empty file, blank
+lines, a file with no metadata record, an unsupported format version, garbage, a file cut in half) and
+requires that none is accepted, and checks that the unmodified export is accepted.
 
 ```sh
 make test
 ```
 
-An early version of this test found the most serious bug of the project: an exception inside the checker
-thread ended the process with exit code 0, "accepted". Exit codes now default to *error* and become
-*accepted* only when the whole file has been processed; see [design](design.md#failing-closed).
+Two of the most serious bugs of the project were found this way and by running a pipeline: an exception
+inside the checker thread ended the process with exit code 0, "accepted", and an empty input (a failed
+`lean4export` upstream of a pipe) was accepted as a vacuously valid export. Exit codes now default to *error*
+and become *accepted* only when a non-empty file with a metadata record has been processed in full; see
+[design](design.md#failing-closed).
 
 ## What this does not show
 

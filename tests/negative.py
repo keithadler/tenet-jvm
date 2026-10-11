@@ -122,6 +122,37 @@ def run(recs):
         os.unlink(path)
 
 
+def run_text(text):
+    with tempfile.NamedTemporaryFile("w", suffix=".ndjson", delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        return subprocess.run([LAUNCHER, path], capture_output=True, text=True, timeout=120).returncode
+    finally:
+        os.unlink(path)
+
+
+def input_checks():
+    """Things that are not exports at all must not be accepted as empty exports."""
+    good = open(SOURCE).read()
+    first = good.split("\n", 1)[0]
+    cases = {
+        "empty file": "",
+        "blank lines only": "\n\n",
+        "no metadata record": good.split("\n", 1)[1],
+        "wrong format major version": good.replace('"format":{"version":"3.1.0"}', '"format":{"version":"9.0.0"}', 1),
+        "garbage": "this is not json\n",
+        "truncated mid-line": good[: len(good) // 2],
+    }
+    bad = 0
+    for name, text in cases.items():
+        code = run_text(text)
+        verdict = "ok" if code in (1, 3) else f"ACCEPTED({code})"
+        print(f"{verdict:8} input: {name}")
+        bad += code not in (1, 3)
+    return bad
+
+
 def main():
     bad = 0
     code, out = run(load())
@@ -135,7 +166,8 @@ def main():
         reason = next((l for l in out.splitlines() if l.startswith("REJECTED")), "")[:110]
         print(f"{verdict:8} {m.__name__:30} {reason}")
         bad += code != 1
-    print(f"\n{len(MUTANTS)} mutants, {bad} problem(s)")
+    bad += input_checks()
+    print(f"\n{len(MUTANTS)} mutants and 6 malformed inputs, {bad} problem(s)")
     sys.exit(1 if bad else 0)
 
 
