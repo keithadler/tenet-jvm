@@ -11,6 +11,7 @@ import java.util.Map;
 
 /** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
+    static final String VERSION = "0.1.0";
     private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
 
     public static void main(String[] args) throws Exception {
@@ -19,6 +20,7 @@ public final class Main {
         for (String a : args) {
             if (a.equals("--keep-going")) keepGoing = true;
             else if (a.equals("-h") || a.equals("--help")) { usage(); return; }
+            else if (a.equals("--version")) { System.out.println("tenet-jvm " + VERSION); return; }
             else file = a;
         }
         if (file == null) { usage(); System.exit(64); }
@@ -43,7 +45,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("usage: tenet-jvm [--keep-going] <export.ndjson | ->");
+        System.err.println("tenet-jvm " + VERSION + "\nusage: tenet-jvm [--keep-going] [--version] <export.ndjson | ->");
     }
 
     private static int run(String file, boolean keepGoing) {
@@ -84,6 +86,7 @@ public final class Main {
         double secs = (System.nanoTime() - start) / 1e9;
         System.out.printf("lean %s, export format %s, %d lines%n", reader.leanVersion, reader.formatVersion, reader.lines);
         System.out.printf("checked %d constants (%s) and %d inductive blocks in %.2fs%n", kernel.env.size(), counts, blocks[0], secs);
+        System.out.println("axioms declared: " + (kernel.axioms.isEmpty() ? "none" : kernel.axioms.toString().replaceAll("^\\[|\\]$", "")));
         if (!kernel.trusted.isEmpty()) {
             System.out.println("NOT FULLY VERIFIED (" + kernel.trusted.size() + " items accepted on trust):");
             for (String s : kernel.trusted.subList(0, Math.min(10, kernel.trusted.size()))) System.out.println("  " + s);

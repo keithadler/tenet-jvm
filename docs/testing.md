@@ -1,0 +1,75 @@
+# Testing
+
+tenet-jvm is tested, not verified. Evidence is only as good as what was run, so this file says what was
+run, how to run it again, and what it does not show.
+
+## 1. Real libraries
+
+`lean4export` produces an export of any Lean module; tenet-jvm must accept all of it.
+
+| Library | Lean | Constants | Inductive groups |
+|---|---|---|---|
+| `Init` | 4.35.0-rc4 | 59,349 | 604 |
+| `Std` (includes `Init`) | 4.35.0-rc4 | 99,619 | 1,028 |
+
+Every declaration is accepted and nothing is taken on trust. These numbers matter for a second reason:
+in `Init` and `Std` every inductive type's recursors (types and reduction rules) were *regenerated* by the
+kernel and compared with the export, for all 1,028 inductive groups, including nested ones such as
+`Lean.Syntax`.
+
+Reproduce:
+
+```sh
+git clone https://github.com/leanprover/lean4export && cd lean4export && lake build
+lake env .lake/build/bin/lean4export Init > init.ndjson
+bin/tenet-jvm init.ndjson
+```
+
+## 2. The Lean Kernel Arena
+
+[The arena](https://github.com/leanprover/lean-kernel-arena) is a shared set of tests for kernels: good
+exports that must be accepted, bad ones (including soundness bugs that were really found in the official
+kernel and in other checkers) that must be rejected, and corner cases where either answer is allowed.
+
+`tools/arena_check.py` runs tenet-jvm over a locally built copy and scores it the way the arena does:
+
+```sh
+cd lean-kernel-arena
+for g in tutorial 'bugs/*' 'corner-cases/*' 'other/*' 'perf/*'; do uv run lka.py build-test "$g"; done
+cd ../tenet-jvm
+uv run --with pyyaml tools/arena_check.py ../lean-kernel-arena
+```
+
+Result: **197 correct, 18 "either", 0 wrongly accepted, 0 wrongly rejected, 0 declined or timed out**
+(tutorial 141 sub-tests, bugs 18, corner cases 19, other 9, perf 28).
+
+The first run was not clean: it wrongly accepted two soundness-bug tests and wrongly rejected one level
+test. All three came from the same two causes, a syntactic zero test on universe levels and an incomplete
+`imax` normalisation, and are fixed. `docs/divergences.md` has the details.
+
+## 3. Mutation tests
+
+`tests/negative.py` takes a valid export, damages it in one targeted way, and requires a rejection. Sixteen
+mutants: a theorem given the wrong proof, a definition given the wrong type, an undeclared universe, swapped
+recursor rules, a wrong field count in a rule, a recursor given another type's type, flipped `k`, `isRec`,
+`numParams`, `numIndices`, `numNested` flags, a constructor dropped from its type, a wrong `cidx`, a wrong
+`numFields`, and an extra orphan recursor. It also checks that the unmodified export is accepted.
+
+```sh
+make test
+```
+
+An early version of this test found the most serious bug of the project: an exception inside the checker
+thread ended the process with exit code 0, "accepted". Exit codes now default to *error* and become
+*accepted* only when the whole file has been processed; see [design](design.md#failing-closed).
+
+## What this does not show
+
+- **Mathlib has not been checked yet.** It is the arena's reference for time and memory and by far the
+  largest test.
+- **The arena suite is a floor, not a ceiling.** Passing it says no *known* bug is present.
+- **Both kinds of error are possible in the kernel's own search for a proof of defeq**: wrongly rejecting a
+  valid proof is likely to be noticed; wrongly accepting an invalid one is not. The mutation tests and the
+  arena's `bugs/` group exist for that reason, and they are the tests to extend first.
+- **Agreement with Lean is not independence.** Where tenet-jvm copies a decision from the reference kernel it
+  shares that kernel's mistakes if it had any. [Divergences](divergences.md) lists where it does not.

@@ -13,6 +13,8 @@ public final class Kernel {
     private final TypeChecker tc = new TypeChecker(env);
     /** Declarations accepted on trust rather than fully verified (to be driven to zero). */
     public final List<String> trusted = new java.util.ArrayList<>();
+    /** Axioms the export declares. A kernel cannot judge an axiom, only report it. */
+    public final List<Name> axioms = new java.util.ArrayList<>();
 
     private void checkLParams(List<Name> lps) {
         Set<Name> seen = new HashSet<>();
@@ -39,7 +41,7 @@ public final class Kernel {
         Decl d = (Decl) item;
         tc.begin(d.levelParams, TypeChecker.rank(d));
         switch (d.kind) {
-            case AXIOM: checkType(d); env.add(d); break;
+            case AXIOM: checkType(d); env.add(d); axioms.add(d.name); break;
             case DEF: {
                 Decl.Def def = (Decl.Def) d;
                 checkType(d);

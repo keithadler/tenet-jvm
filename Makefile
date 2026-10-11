@@ -10,3 +10,9 @@ out/.built: $(SRC)
 
 clean:
 	rm -rf out
+
+test: all
+	python3 tests/negative.py
+	bin/tenet-jvm tests/exports/nat_add_comm.ndjson
+
+.PHONY: all clean test
