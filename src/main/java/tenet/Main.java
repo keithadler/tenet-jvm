@@ -21,7 +21,7 @@ public final class Main {
             else if (a.equals("-h") || a.equals("--help")) { usage(); return; }
             else file = a;
         }
-        if (file == null) { usage(); System.exit(2); }
+        if (file == null) { usage(); System.exit(64); }
         final boolean kg = keepGoing;
         final String f = file;
         int[] code = {0};
@@ -68,7 +68,7 @@ public final class Main {
             });
         } catch (IOException e) {
             System.err.println("cannot read " + file + ": " + e.getMessage());
-            return 2;
+            return 3;
         }
         double secs = (System.nanoTime() - start) / 1e9;
         System.out.printf("lean %s, export format %s, %d lines%n", reader.leanVersion, reader.formatVersion, reader.lines);

@@ -172,7 +172,9 @@ public abstract class Level {
             case ZERO: case PARAM: return this;
             case IMAX: {
                 Level l1 = ((IMax) r).lhs.normalize(), l2 = ((IMax) r).rhs.normalize();
-                return addOffset(mkIMax(l1, l2), k);
+                Level m = mkIMax(l1, l2);
+                if (m.kind != Kind.IMAX) return addOffset(m, k).normalize();
+                return addOffset(m, k);
             }
             default: break;
         }
@@ -262,6 +264,11 @@ public abstract class Level {
         Level zero = Level.ZERO, succP = succ(param(p));
         return forAllCases(na.instantiate(ps, List.of(zero)), nb.instantiate(ps, List.of(zero)), t)
                 && forAllCases(na.instantiate(ps, List.of(succP)), nb.instantiate(ps, List.of(succP)), t);
+    }
+
+    /** Is this level zero under every assignment of its parameters (e.g. imax 1 0)? */
+    public boolean isEquivZero() {
+        return isZero() || isEquiv(ZERO);
     }
 
     public boolean isEquiv(Level o) {

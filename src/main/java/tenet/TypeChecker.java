@@ -279,7 +279,10 @@ public final class TypeChecker {
     /** Is the given type a proposition, i.e. does it have type Prop? */
     public boolean isPropType(Expr type) {
         Expr w = whnf(infer(type, true));
-        return w.kind == Expr.Kind.SORT && ((Expr.Sort) w).level.isZero();
+        // A sort that does not reduce to a Sort is an error, not an answer: "not a proposition" would be
+        // a claim about a type whose universe we could not even determine (cf. lean4#14807).
+        if (w.kind != Expr.Kind.SORT) throw new KernelException("type expected: " + type + " has type " + w);
+        return ((Expr.Sort) w).level.isEquivZero();
     }
 
     // ---- weak head normal form --------------------------------------------

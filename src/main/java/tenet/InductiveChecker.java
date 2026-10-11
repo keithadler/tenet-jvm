@@ -239,7 +239,7 @@ final class InductiveChecker {
                         t = Expr.instantiate1(b.body, params.get(i));
                     } else {
                         Level s = tc.ensureSort(tc.infer(b.type), b.type);
-                        if (!(resultLevel.isGeq(s) || resultLevel.isZero()))
+                        if (!(resultLevel.isGeq(s) || resultLevel.isEquivZero()))
                             throw err("universe level of type_of(arg #" + (i + 1) + ") of '" + cn + "' is too big for the corresponding inductive datatype");
                         if (!isUnsafe) checkPositivity(b.type, cn, i);
                         Expr l = localFor(b);
@@ -304,7 +304,7 @@ final class InductiveChecker {
             } else {
                 Expr l = localFor(b);
                 Level s = tc.ensureSort(tc.infer(b.type), b.type);
-                if (!s.isZero()) toCheck.add(l);
+                if (!s.isEquivZero()) toCheck.add(l);
                 t = Expr.instantiate1(b.body, l);
             }
             i++;
@@ -326,7 +326,7 @@ final class InductiveChecker {
     }
 
     private void initKTarget() {
-        kTarget = types.size() == 1 && resultLevel.isZero() && types.get(0).ctors.size() == 1;
+        kTarget = types.size() == 1 && resultLevel.isEquivZero() && types.get(0).ctors.size() == 1;
         if (!kTarget) return;
         Expr it = types.get(0).ctors.get(0).type;
         int i = 0;
