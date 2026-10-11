@@ -12,6 +12,17 @@ Version 0.1.0, 11 October 2026.
 
 Lean 4.35.0-rc4, JDK 21. See [testing](testing.md) for what these runs do and do not show.
 
+Real projects from the Lean Kernel Arena (exported with the arena's pinned revisions):
+
+| Project | Lean | Constants | Inductive groups | Time |
+|---|---|---|---|---|
+| `con-leche` | 4.33.0 | 27,959 | 333 | ≈ 35 s |
+| `cedar` | 4.34.1 | 148,832 | 1,921 | ≈ 50 s |
+| `cslib` | 4.34.0 | 394,284 | 4,022 | ≈ 455 s |
+
+All accepted. `cedar` declares `native_decide` axioms and `cslib` declares `Lean.ofReduceBool`,
+`Lean.ofReduceNat` and `sorryAx`; tenet-jvm accepts declared axioms and lists them, it does not judge them.
+
 ## Lean Kernel Arena (local run)
 
 197 decided tests correct, 18 "either", none wrongly accepted, none wrongly rejected, none declined,
@@ -33,8 +44,11 @@ over `tutorial`, `bugs`, `corner-cases`, `other` and `perf`. See [arena](arena.m
 
 ## Known gaps
 
-- **Mathlib has not been run.** It is the arena's reference for time and memory.
-- **The other real-world arena libraries** (`cedar`, `cslib`, `navier-stokes-euler`, `con-leche`) have not been run.
+- **Mathlib has not completed.** It is the arena's reference for time and memory. A run reached 59,000
+  declarations in minutes; some category-theory declarations are far slower here than in the official
+  kernel (one goal takes about 8 s against a fraction of a second), so total time is the open question.
+- **`navier-stokes-euler`** has not been run: it needs Lean 4.34.0-rc2, whose `lake` crashes on the
+  machine the project was developed on.
 - **No dependency report**: the kernel lists the axioms an export declares but does not say which theorem
   depends on which (in particular, which depend on `sorryAx`).
 - **No per-declaration time or memory limit.**

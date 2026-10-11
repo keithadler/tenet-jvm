@@ -178,7 +178,10 @@ public abstract class Expr {
         }
     }
 
+    public static long CREATED, LVL_CALLS, INST_CALLS;
+
     private static Expr share(Expr c) {
+        CREATED++;
         if (SHARE_BITS == 0) return c;
         int i = (c.hash * 0x9E3779B9) >>> (32 - SHARE_BITS);
         Expr e = SHARE[i];
@@ -455,6 +458,7 @@ public abstract class Expr {
     /** Replaces loose bvar i (i < subst.length) by subst[subst.length-1-i]; shifts the rest down. */
     public static Expr instantiateRev(Expr e, Expr[] subst) {
         if (e.looseBVarRange == 0 || subst.length == 0) return e;
+        INST_CALLS++;
         final int n = subst.length;
         return replace(e, (x, off) -> {
             if (x.looseBVarRange <= off) return x;
@@ -535,6 +539,7 @@ public abstract class Expr {
 
     public static Expr instantiateLevelParams(Expr e, List<Name> params, List<Level> args) {
         if (!e.hasLevelParam || params.isEmpty()) return e;
+        LVL_CALLS++;
         return replace(e, (x, off) -> {
             if (!x.hasLevelParam) return x;
             if (x.kind == Kind.SORT) return sort(((Sort) x).level.instantiate(params, args));

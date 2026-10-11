@@ -39,6 +39,32 @@ public final class TypeChecker {
     private Set<List<Expr>> eqCache = new HashSet<>();
     private Set<List<Expr>> failCache = new HashSet<>();
 
+    // TEMP-STATS
+    static final boolean STATS = System.getProperty("tenet.stats") != null;
+    static final java.util.Map<String, Long> UNFOLDS = new java.util.HashMap<>();
+    static long nDefEq, nQuickHit, nUnfold, nWhnf, irrelNs, irrelCalls;
+    static final java.util.Map<Long, Long> PAIRS = new java.util.HashMap<>();
+    static final java.util.List<String> PAIR_SAMPLES = new java.util.ArrayList<>();
+    static {
+        if (STATS) {
+            Thread t = new Thread(() -> {
+                while (true) {
+                    try { Thread.sleep(15000); } catch (InterruptedException e) { return; }
+                    java.util.List<java.util.Map.Entry<String, Long>> es = new java.util.ArrayList<>(UNFOLDS.entrySet());
+                    es.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+                    StringBuilder sb = new StringBuilder("STATS defeq=" + nDefEq + " quickHit=" + nQuickHit + " unfold=" + nUnfold + " whnf=" + nWhnf + " top:");
+                    for (int i = 0; i < Math.min(12, es.size()); i++) sb.append(" ").append(es.get(i).getKey()).append("=").append(es.get(i).getValue());
+                    System.err.println(sb);
+                    System.err.println("IRREL calls=" + irrelCalls + " ms=" + irrelNs / 1_000_000);
+                    System.err.println("PAIRS distinct=" + PAIRS.size() + " total=" + nDefEq);
+                    for (String x : PAIR_SAMPLES) System.err.println("  REPEATED(>=50): " + x);
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+        }
+    }
+
     public TypeChecker(Env env) { this.env = env; }
 
     private static Map<Expr, Expr> fresh(Map<Expr, Expr> m) {
@@ -59,6 +85,7 @@ public final class TypeChecker {
         whnfCoreCheapCache = fresh(whnfCoreCheapCache);
         whnfCache = fresh(whnfCache);
         unfoldCache = fresh(unfoldCache);
+        deltaStepCache = fresh(deltaStepCache);
         if (eqCache.size() > 256) eqCache = new HashSet<>(); else eqCache.clear();
         if (failCache.size() > 256) failCache = new HashSet<>(); else failCache.clear();
     }
@@ -166,7 +193,13 @@ public final class TypeChecker {
             Expr fType = ensurePi(infer(a.fn, false), a.fn);
             Expr aType = infer(a.arg, false);
             Expr dom = ((Expr.Binder) fType).type;
-            if (!isDefEq(aType, dom))
+            long t0 = STATS ? System.nanoTime() : 0;
+            boolean okArg = isDefEq(aType, dom);
+            if (STATS && System.nanoTime() - t0 > 300_000_000L) {
+                String x = aType.toString(), y = dom.toString();
+                System.err.println("SLOWARG " + (System.nanoTime() - t0) / 1_000_000 + "ms fn=" + a.fn.getAppFn() + "\n   have: " + x.substring(0, Math.min(500, x.length())) + "\n   want: " + y.substring(0, Math.min(500, y.length())));
+            }
+            if (!okArg)
                 throw new KernelException("application type mismatch\n  function head: " + a.fn.getAppFn() + "\n  argument: " + a.arg + "\n  has type: " + aType + "\n  but is expected to have type: " + dom);
             return Expr.instantiate1(((Expr.Binder) fType).body, a.arg);
         }
@@ -511,10 +544,24 @@ public final class TypeChecker {
         return v;
     }
 
+    private Map<Expr, Expr> deltaStepCache = new HashMap<>();
+
+    /** unfold e's head definition and reduce the result with the cheap whnfCore; memoised on e. */
+    private Expr unfoldCheap(Expr e) {
+        Expr c = deltaStepCache.get(e);
+        if (c != null) return c;
+        Expr u = unfoldDefinition(e);
+        if (u == null) return null;
+        Expr r = whnfCore(u, false, true);
+        deltaStepCache.put(e, r);
+        return r;
+    }
+
     Expr unfoldDefinition(Expr e) {
         Decl d = deltaInfo(e);
         if (d == null) return null;
         Expr f = e.getAppFn();
+        if (STATS) { nUnfold++; UNFOLDS.merge(((Expr.Const) f).name.toString(), 1L, Long::sum); }
         Expr v = unfoldConst((Expr.Const) f, d);
         if (v == null) return null;
         if (e.kind == Expr.Kind.APP) return Expr.betaRev(v, e.getAppArgs());
@@ -598,8 +645,20 @@ public final class TypeChecker {
 
     // ---- definitional equality --------------------------------------------
 
+    private int dbgDepth = 0;
+
     public boolean isDefEq(Expr t, Expr s) {
+        long t0 = STATS ? System.nanoTime() : 0;
+        dbgDepth++;
         boolean r = isDefEqCore(t, s);
+        dbgDepth--;
+        if (STATS && System.nanoTime() - t0 > 3_000_000_000L) {
+            String x = t.toString(), y = s.toString();
+            System.err.println("SLOWDEFEQ depth=" + dbgDepth + " " + (System.nanoTime() - t0) / 1_000_000 + "ms result=" + r + "\n   L: " + x.substring(0, Math.min(350, x.length())) + "\n   R: " + y.substring(0, Math.min(350, y.length())));
+        }
+        if (STATS && dbgDepth == 3 && System.nanoTime() - t0 > 4_000_000_000L) {
+            try { java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/slowpair.txt"), t + "\n=?=\n" + s); } catch (Exception ex) { }
+        }
         if (r) eqCache.add(List.of(t, s));
         return r;
     }
@@ -644,13 +703,22 @@ public final class TypeChecker {
     }
 
     private int proofIrrel(Expr t, Expr s) {
+        long q0 = STATS ? System.nanoTime() : 0;
         Expr tType = infer(t, true);
-        if (!isPropType(tType)) return UNDEF;
+        boolean prop = isPropType(tType);
+        if (STATS) { irrelNs += System.nanoTime() - q0; irrelCalls++; }
+        if (!prop) return UNDEF;
         Expr sType = infer(s, true);
         return isDefEq(tType, sType) ? TRUE : FALSE;
     }
 
     private boolean isDefEqCore(Expr t, Expr s) {
+        if (STATS) {
+            nDefEq++;
+            long k = (long) t.hash * 1000003L + s.hash;
+            Long c = PAIRS.merge(k, 1L, Long::sum);
+            if (c == 50 && PAIR_SAMPLES.size() < 3) PAIR_SAMPLES.add(t.toString().substring(0, Math.min(300, t.toString().length())) + "\n   =?= " + s.toString().substring(0, Math.min(300, s.toString().length())));
+        }
         int r = quickIsDefEq(t, s);
         if (r != UNDEF) return r == TRUE;
 
@@ -813,27 +881,27 @@ public final class TypeChecker {
                 Expr s2 = whnfCore(s);
                 if (!s2.equals(s)) { st[1] = s2; return afterStep(st); }
             }
-            Expr u = unfoldDefinition(t);
+            Expr u = unfoldCheap(t);
             if (u == null) return DEF_UNKNOWN;
-            st[0] = whnfCore(u, false, true);
+            st[0] = u;
         } else if (dt == null) {
             if (t.getAppFn().kind == Expr.Kind.PROJ) {
                 Expr t2 = whnfCore(t);
                 if (!t2.equals(t)) { st[0] = t2; return afterStep(st); }
             }
-            Expr u = unfoldDefinition(s);
+            Expr u = unfoldCheap(s);
             if (u == null) return DEF_UNKNOWN;
-            st[1] = whnfCore(u, false, true);
+            st[1] = u;
         } else {
             int c = compareHints(dt, ds);
             if (c < 0) {
-                Expr u = unfoldDefinition(t);
+                Expr u = unfoldCheap(t);
                 if (u == null) return DEF_UNKNOWN;
-                st[0] = whnfCore(u, false, true);
+                st[0] = u;
             } else if (c > 0) {
-                Expr u = unfoldDefinition(s);
+                Expr u = unfoldCheap(s);
                 if (u == null) return DEF_UNKNOWN;
-                st[1] = whnfCore(u, false, true);
+                st[1] = u;
             } else {
                 if (t.kind == Expr.Kind.APP && s.kind == Expr.Kind.APP && dt == ds && hintKind(dt) == 2) {
                     List<Expr> key = List.of(t, s);
@@ -842,10 +910,10 @@ public final class TypeChecker {
                         failCache.add(key);
                     }
                 }
-                Expr ut = unfoldDefinition(t), us = unfoldDefinition(s);
+                Expr ut = unfoldCheap(t), us = unfoldCheap(s);
                 if (ut == null || us == null) return DEF_UNKNOWN;
-                st[0] = whnfCore(ut, false, true);
-                st[1] = whnfCore(us, false, true);
+                st[0] = ut;
+                st[1] = us;
             }
         }
         return afterStep(st);
@@ -887,8 +955,10 @@ public final class TypeChecker {
                 case DEF_EQ: return true;
                 default: {
                     Expr tc = reduceProjCore(st[0], idx);
+                    if (tc == null) tc = reduceProjCore(whnfCore(st[0]), idx);
                     if (tc != null) {
                         Expr sc = reduceProjCore(st[1], idx);
+                        if (sc == null) sc = reduceProjCore(whnfCore(st[1]), idx);
                         if (sc != null) return isDefEqCore(tc, sc);
                     }
                     return isDefEqCore(st[0], st[1]);

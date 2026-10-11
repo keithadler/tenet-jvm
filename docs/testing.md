@@ -17,6 +17,9 @@ in `Init` and `Std` every inductive type's recursors (types and reduction rules)
 kernel and compared with the export, for all 1,028 inductive groups, including nested ones such as
 `Lean.Syntax`.
 
+The arena's real-world projects were also checked (`con-leche`, `cedar`, `cslib`; see [status](status.md)),
+about 570,000 further constants and 6,300 inductive groups, all accepted.
+
 Reproduce:
 
 ```sh
@@ -69,8 +72,8 @@ and become *accepted* only when a non-empty file with a metadata record has been
 
 ## What this does not show
 
-- **Mathlib has not been checked yet.** It is the arena's reference for time and memory and by far the
-  largest test.
+- **Mathlib has not been checked to completion yet.** It is the arena's reference for time and memory and by
+  far the largest test.
 - **The arena suite is a floor, not a ceiling.** Passing it says no *known* bug is present.
 - **Both kinds of error are possible in the kernel's own search for a proof of defeq**: wrongly rejecting a
   valid proof is likely to be noticed; wrongly accepting an invalid one is not. The mutation tests and the
