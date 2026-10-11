@@ -31,31 +31,38 @@ public final class TypeChecker {
     private int safetyRank = 0; // 0 safe, 1 partial, 2 unsafe
     private final Map<Long, Local> lctx = new HashMap<>();
 
-    private final Map<Expr, Expr> inferOnlyCache = new HashMap<>();
-    private final Map<Expr, Expr> inferCheckedCache = new HashMap<>();
-    private final Map<Expr, Expr> whnfCoreCache = new HashMap<>();
-    private final Map<Expr, Expr> whnfCoreCheapCache = new HashMap<>();
-    private final Map<Expr, Expr> whnfCache = new HashMap<>();
-    private final Map<Expr, Expr> unfoldCache = new HashMap<>();
-    private final Set<List<Expr>> eqCache = new HashSet<>();
-    private final Set<List<Expr>> failCache = new HashSet<>();
+    private Map<Expr, Expr> inferOnlyCache = new HashMap<>();
+    private Map<Expr, Expr> inferCheckedCache = new HashMap<>();
+    private Map<Expr, Expr> whnfCoreCache = new HashMap<>();
+    private Map<Expr, Expr> whnfCoreCheapCache = new HashMap<>();
+    private Map<Expr, Expr> whnfCache = new HashMap<>();
+    private Map<Expr, Expr> unfoldCache = new HashMap<>();
+    private Set<List<Expr>> eqCache = new HashSet<>();
+    private Set<List<Expr>> failCache = new HashSet<>();
 
     static TypeChecker CURRENT;
     public TypeChecker(Env env) { this.env = env; CURRENT = this; }
+
+    private static Map<Expr, Expr> fresh(Map<Expr, Expr> m) {
+        if (m.size() > 256) return new HashMap<>();
+        m.clear();
+        return m;
+    }
 
     /** Prepare to check a declaration with the given universe parameters. */
     public void begin(List<Name> lparams, int safetyRank) {
         this.lparams = lparams;
         this.safetyRank = safetyRank;
         lctx.clear();
-        inferOnlyCache.clear();
-        inferCheckedCache.clear();
-        whnfCoreCache.clear();
-        whnfCoreCheapCache.clear();
-        whnfCache.clear();
-        unfoldCache.clear();
-        eqCache.clear();
-        failCache.clear();
+        // clear() costs time proportional to the table's capacity, which stays large after a big declaration
+        inferOnlyCache = fresh(inferOnlyCache);
+        inferCheckedCache = fresh(inferCheckedCache);
+        whnfCoreCache = fresh(whnfCoreCache);
+        whnfCoreCheapCache = fresh(whnfCoreCheapCache);
+        whnfCache = fresh(whnfCache);
+        unfoldCache = fresh(unfoldCache);
+        if (eqCache.size() > 256) eqCache = new HashSet<>(); else eqCache.clear();
+        if (failCache.size() > 256) failCache = new HashSet<>(); else failCache.clear();
     }
 
     // ---- local context -----------------------------------------------------

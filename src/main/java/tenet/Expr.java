@@ -129,29 +129,38 @@ public abstract class Expr {
     private static final BVar[] SMALL_BVARS = new BVar[64];
     static { for (int i = 0; i < SMALL_BVARS.length; i++) SMALL_BVARS[i] = new BVar(i); }
 
-    public static Expr bvar(int i) { return i < SMALL_BVARS.length ? SMALL_BVARS[i] : intern(new BVar(i)); }
-    public static Expr fvar(long id) { return intern(new FVar(id)); }
-    public static Expr sort(Level l) { return intern(new Sort(l)); }
-    public static Expr cnst(Name n, List<Level> ls) { return intern(new Const(n, ls)); }
-    public static Expr app(Expr f, Expr a) { return intern(new App(f, a)); }
-    public static Expr lam(Name n, Expr t, Expr b, String info) { return intern(new Binder(Kind.LAM, n, t, b, info)); }
-    public static Expr pi(Name n, Expr t, Expr b, String info) { return intern(new Binder(Kind.PI, n, t, b, info)); }
-    public static Expr let(Name n, Expr t, Expr v, Expr b) { return intern(new Let(n, t, v, b)); }
-    public static Expr nat(BigInteger v) { return intern(new NatLit(v)); }
+    public static Expr bvar(int i) { return i < SMALL_BVARS.length ? SMALL_BVARS[i] : share(new BVar(i)); }
+    public static Expr fvar(long id) { return share(new FVar(id)); }
+    public static Expr sort(Level l) { return share(new Sort(l)); }
+    public static Expr cnst(Name n, List<Level> ls) { return share(new Const(n, ls)); }
+    public static Expr app(Expr f, Expr a) { return share(new App(f, a)); }
+    public static Expr lam(Name n, Expr t, Expr b, String info) { return share(new Binder(Kind.LAM, n, t, b, info)); }
+    public static Expr pi(Name n, Expr t, Expr b, String info) { return share(new Binder(Kind.PI, n, t, b, info)); }
+    public static Expr let(Name n, Expr t, Expr v, Expr b) { return share(new Let(n, t, v, b)); }
+    public static Expr nat(BigInteger v) { return share(new NatLit(v)); }
     public static Expr nat(long v) { return nat(BigInteger.valueOf(v)); }
-    public static Expr str(String s) { return intern(new StrLit(s)); }
-    public static Expr proj(Name t, int i, Expr s) { return intern(new Proj(t, i, s)); }
+    public static Expr str(String s) { return share(new StrLit(s)); }
+    public static Expr proj(Name t, int i, Expr s) { return share(new Proj(t, i, s)); }
 
-    // ---- hash-consing ------------------------------------------------------
+    public static Expr apps(Expr f, List<Expr> args) {
+        for (Expr a : args) f = app(f, a);
+        return f;
+    }
+
+    public static Expr apps(Expr f, Expr... args) {
+        for (Expr a : args) f = app(f, a);
+        return f;
+    }
+
+    // ---- sharing -----------------------------------------------------------
     //
-    // Structurally equal terms built through the factories above are the same object, so that equality
-    // and cache lookups are pointer comparisons. The table is strong and is emptied between declarations
-    // once it has grown large; terms from before a flush stay valid, they are merely no longer shared with
-    // equal terms built afterwards, which structural equality (the fallback in equals) still identifies.
+    // A fixed, direct-mapped table makes most structurally equal terms the same object, so that cache
+    // lookups usually succeed on a pointer comparison. It is lossy by design (a colliding entry is simply
+    // overwritten), costs one array access per node built, and never grows. Terms that miss the table
+    // are still compared structurally, so this affects speed only, never results.
 
-    private static Expr[] consTable = new Expr[1 << 16];
-    private static int consCount = 0;
-    private static final int CONS_HARD_CAP = 1 << 25;
+    private static final int SHARE_BITS = Integer.getInteger("tenet.share.bits", 18);
+    private static final Expr[] SHARE = new Expr[SHARE_BITS == 0 ? 1 : 1 << SHARE_BITS];
 
     private static boolean shallowEq(Expr a, Expr b) {
         if (a.kind != b.kind || a.hash != b.hash) return false;
@@ -169,51 +178,13 @@ public abstract class Expr {
         }
     }
 
-    private static Expr intern(Expr c) {
-        Expr[] t = consTable;
-        int mask = t.length - 1;
-        int i = (c.hash * 0x9E3779B9) >>> (32 - Integer.numberOfTrailingZeros(t.length));
-        while (true) {
-            Expr e = t[i];
-            if (e == null) break;
-            if (shallowEq(e, c)) return e;
-            i = (i + 1) & mask;
-        }
-        if (consCount >= CONS_HARD_CAP) return c;
-        t[i] = c;
-        if (++consCount * 2 > t.length) growCons();
+    private static Expr share(Expr c) {
+        if (SHARE_BITS == 0) return c;
+        int i = (c.hash * 0x9E3779B9) >>> (32 - SHARE_BITS);
+        Expr e = SHARE[i];
+        if (e != null && shallowEq(e, c)) return e;
+        SHARE[i] = c;
         return c;
-    }
-
-    private static void growCons() {
-        Expr[] old = consTable;
-        Expr[] t = new Expr[old.length * 2];
-        int mask = t.length - 1;
-        for (Expr e : old) {
-            if (e == null) continue;
-            int i = (e.hash * 0x9E3779B9) >>> (32 - Integer.numberOfTrailingZeros(t.length));
-            while (t[i] != null) i = (i + 1) & mask;
-            t[i] = e;
-        }
-        consTable = t;
-    }
-
-    /** Empties the sharing table if it has grown past the given number of entries. */
-    public static void flushConsTable(int maxEntries) {
-        if (consCount > maxEntries) {
-            consTable = new Expr[1 << 16];
-            consCount = 0;
-        }
-    }
-
-    public static Expr apps(Expr f, List<Expr> args) {
-        for (Expr a : args) f = app(f, a);
-        return f;
-    }
-
-    public static Expr apps(Expr f, Expr... args) {
-        for (Expr a : args) f = app(f, a);
-        return f;
     }
 
     // ---- equality ----------------------------------------------------------

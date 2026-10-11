@@ -35,7 +35,6 @@ public final class Kernel {
     }
 
     public void add(Object item) {
-        Expr.flushConsTable(8_000_000);
         if (item instanceof InductiveBlock) { addInductive((InductiveBlock) item); return; }
         Decl d = (Decl) item;
         tc.begin(d.levelParams, TypeChecker.rank(d));

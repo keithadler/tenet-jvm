@@ -1,0 +1,5 @@
+#!/bin/sh
+# Launcher: runs the checker with JVM settings suited to it (throughput GC, most of the RAM, deep recursion
+# is handled by the checker's own large-stack thread). Pass JAVA_OPTS to override.
+here="$(cd "$(dirname "$0")/.." && pwd)"
+exec "${JAVA:-java}" ${JAVA_OPTS:--XX:+UseParallelGC -XX:MaxRAMPercentage=75} -cp "$here/out" tenet.Main "$@"
