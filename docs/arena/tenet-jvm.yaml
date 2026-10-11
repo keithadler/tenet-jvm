@@ -1,0 +1,21 @@
+description: |
+  **tenet-jvm** is an independent implementation of the Lean 4 kernel in Java, the JVM counterpart to
+  [Tenet](https://github.com/keithadler/tenet) (C#/.NET). It was written from the type theory and from the
+  behaviour of the reference kernel, shares no code with Lean, and has no dependencies beyond a JDK.
+
+  It reads `lean4export` NDJSON. It does not trust the export for anything it can derive: every
+  inductive type's recursors, recursor rules and bookkeeping flags are regenerated from the declaration
+  (including nested and mutual groups) and compared, and the quotient constants are compared with their
+  canonical types. Where tenet-jvm decides something differently from Lean it is written down in
+  `docs/divergences.md`.
+
+  The process fails closed: the verdict starts as "error" and becomes "accepted" only after the whole file
+  has been processed; any exception, including an out-of-memory error, is a non-zero exit.
+url: https://github.com/keithadler/tenet-jvm
+ref: main
+rev: REPLACE_WITH_COMMIT
+version: "0.1.0"
+# Single-threaded; the JVM's own helper threads (garbage collector, JIT) are not counted here.
+threads: 1
+build: make
+run: bin/tenet-jvm "$IN"
