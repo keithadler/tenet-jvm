@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#111b2e"/></linearGradient>
+<linearGradient id="ac" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient></defs>
+<rect width="1600" height="900" fill="url(#bg)"/><g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<text x="80" y="120" font-size="34" fill="#2dd4bf" letter-spacing="6" font-weight="600">WHY YOU CAN BELIEVE "VERIFIED"</text>
+<text x="80" y="200" font-size="64" font-weight="800" fill="#e6edf3">A kernel that accepts everything</text>
+<text x="80" y="275" font-size="64" font-weight="800" fill="#e6edf3">would say the same thing.</text>
+<text x="80" y="470" font-size="130" font-weight="800" fill="#2dd4bf">197/197</text><text x="80" y="522" font-size="32" fill="#e6edf3">Lean Kernel Arena tests decided correctly</text>
+<text x="820" y="470" font-size="130" font-weight="800" fill="#2dd4bf">0</text><text x="820" y="522" font-size="32" fill="#e6edf3">proofs wrongly accepted · none wrongly rejected</text>
+<text x="80" y="690" font-size="130" font-weight="800" fill="#f59e0b">22</text><text x="80" y="742" font-size="32" fill="#e6edf3">mutation and bad-input tests, all rejected</text>
+<text x="820" y="690" font-size="130" font-weight="800" fill="#f59e0b">fails closed</text><text x="820" y="742" font-size="32" fill="#e6edf3">a crash can never read as “accepted”</text>
+</g><g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26"><text x="80" y="850" fill="#8b949e">github.com/keithadler/tenet-jvm</text>
+<text x="1520" y="850" fill="#8b949e" text-anchor="end">Apache-2.0 · Java 21 · no dependencies</text></g>
+<rect x="80" y="800" width="1440" height="2" fill="#243247"/></svg>

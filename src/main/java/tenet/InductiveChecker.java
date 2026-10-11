@@ -125,6 +125,13 @@ final class InductiveChecker {
         return validIndAppIdx(t) >= 0;
     }
 
+    /** A binder telescope may hide behind a definition (`Presieve X` unfolds to a Pi); expose it. */
+    private Expr piView(Expr t) {
+        if (t.kind == Expr.Kind.PI) return t;
+        Expr w = tc.whnf(t);
+        return w.kind == Expr.Kind.PI ? w : t;
+    }
+
     // ---- main entry --------------------------------------------------------
 
     Result run() {
@@ -149,7 +156,7 @@ final class InductiveChecker {
             if (type.hasFVar || type.looseBVarRange > 0) throw err("inductive type has free variables: " + ind.name);
             tc.ensureSort(tc.check(type), type);
             int i = 0, nidx = 0;
-            while (type.kind == Expr.Kind.PI) {
+            while ((type = piView(type)).kind == Expr.Kind.PI) {
                 Expr.Binder b = (Expr.Binder) type;
                 if (i < nparams) {
                     if (first) {
@@ -163,7 +170,7 @@ final class InductiveChecker {
                     }
                     i++;
                 } else {
-                    type = b.body;
+                    type = Expr.instantiate1(b.body, localFor(b));
                     nidx++;
                 }
             }
@@ -387,7 +394,7 @@ final class InductiveChecker {
             RecInfo info = new RecInfo();
             Expr t = types.get(d).type;
             int i = 0;
-            while (t.kind == Expr.Kind.PI) {
+            while ((t = piView(t)).kind == Expr.Kind.PI) {
                 Expr.Binder b = (Expr.Binder) t;
                 if (i < nparams) {
                     t = Expr.instantiate1(b.body, params.get(i));

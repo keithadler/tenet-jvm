@@ -178,10 +178,7 @@ public abstract class Expr {
         }
     }
 
-    public static long CREATED, LVL_CALLS, INST_CALLS;
-
     private static Expr share(Expr c) {
-        CREATED++;
         if (SHARE_BITS == 0) return c;
         int i = (c.hash * 0x9E3779B9) >>> (32 - SHARE_BITS);
         Expr e = SHARE[i];
@@ -220,7 +217,23 @@ public abstract class Expr {
         int[] budget = {EQ_BUDGET};
         int r = eqBounded(a, b, budget);
         if (r != 2) return r == 1;
-        return eqMemo(a, b, new java.util.HashSet<>());
+        java.util.Set<Pair> done = new java.util.HashSet<>();
+        boolean res = eqMemo(a, b, done);
+        if (res) rememberEqual(done);
+        return res;
+    }
+
+    /**
+     * Pairs of nodes (by identity) already proved structurally equal. Terms are immutable, so such a fact never
+     * becomes false; remembering it spares the next comparison of two big, unshared but equal copies from
+     * walking them again. Bounded: when full it is simply emptied.
+     */
+    private static final java.util.Set<Pair> KNOWN_EQUAL = new java.util.HashSet<>();
+    private static final int KNOWN_EQUAL_CAP = 4_000_000;
+
+    private static void rememberEqual(java.util.Set<Pair> done) {
+        if (KNOWN_EQUAL.size() + done.size() > KNOWN_EQUAL_CAP) KNOWN_EQUAL.clear();
+        KNOWN_EQUAL.addAll(done);
     }
 
     /** 1 equal, 0 different, 2 budget exhausted. */
@@ -285,7 +298,9 @@ public abstract class Expr {
                 case STR: return ((StrLit) a).val.equals(((StrLit) b).val);
                 default: break;
             }
-            if (!done.add(new Pair(a, b))) return true; // already proved (or being proved: cannot differ on a DAG)
+            Pair pr = new Pair(a, b);
+            if (KNOWN_EQUAL.contains(pr)) return true;
+            if (!done.add(pr)) return true; // being proved higher up in this walk: cannot differ on a DAG
             switch (a.kind) {
                 case APP: {
                     App x = (App) a, y = (App) b;
@@ -458,7 +473,6 @@ public abstract class Expr {
     /** Replaces loose bvar i (i < subst.length) by subst[subst.length-1-i]; shifts the rest down. */
     public static Expr instantiateRev(Expr e, Expr[] subst) {
         if (e.looseBVarRange == 0 || subst.length == 0) return e;
-        INST_CALLS++;
         final int n = subst.length;
         return replace(e, (x, off) -> {
             if (x.looseBVarRange <= off) return x;
@@ -539,7 +553,6 @@ public abstract class Expr {
 
     public static Expr instantiateLevelParams(Expr e, List<Name> params, List<Level> args) {
         if (!e.hasLevelParam || params.isEmpty()) return e;
-        LVL_CALLS++;
         return replace(e, (x, off) -> {
             if (!x.hasLevelParam) return x;
             if (x.kind == Kind.SORT) return sort(((Sort) x).level.instantiate(params, args));

@@ -11,7 +11,6 @@ import java.util.Map;
 
 /** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
-    static final int MAX_ITEMS = Integer.getInteger("tenet.maxitems", 0); // TEMP-BENCH
     static final String VERSION = "0.1.0";
     private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
 
@@ -62,7 +61,6 @@ public final class Main {
                 : Files.newBufferedReader(Path.of(file), StandardCharsets.UTF_8)) {
             reader.read(in, item -> {
                 if (failures[0] > 0 && !keepGoing) return;
-                if (MAX_ITEMS > 0 && done[0] >= MAX_ITEMS) return; // TEMP-BENCH
                 String label = item instanceof InductiveBlock ? "inductive " + ((InductiveBlock) item).types.get(0).name : ((Decl) item).kind + " " + ((Decl) item).name;
                 if (TRACE) System.err.println("> " + label);
                 try {
@@ -86,7 +84,6 @@ public final class Main {
             return 3;
         }
         double secs = (System.nanoTime() - start) / 1e9;
-        if (System.getProperty("tenet.stats") != null) System.err.println("created=" + Expr.CREATED + " lvlCalls=" + Expr.LVL_CALLS + " instCalls=" + Expr.INST_CALLS);
         System.out.printf("lean %s, export format %s, %d lines%n", reader.leanVersion, reader.formatVersion, reader.lines);
         System.out.printf("checked %d constants (%s) and %d inductive blocks in %.2fs%n", kernel.env.size(), counts, blocks[0], secs);
         System.out.println("axioms declared: " + (kernel.axioms.isEmpty() ? "none" : kernel.axioms.toString().replaceAll("^\\[|\\]$", "")));
