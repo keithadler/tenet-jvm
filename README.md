@@ -49,16 +49,17 @@ bin/tenet-jvm ../init.ndjson
 |---|---|---|
 | Lean libraries | `Init`: 59,349 constants, 604 inductive groups | all verified, ≈ 25 s |
 | | `Std` (includes `Init`): 99,619 constants, 1,028 groups | all verified, ≈ 45 s |
-| | `Lean` (includes both): 171,705 constants, 2,860 groups | all verified, ≈ 55 s |
-| Real projects (arena) | `con-leche`: 27,959 constants, 333 groups | all verified, ≈ 35 s |
-| | `cedar`: 148,832 constants, 1,921 groups | all verified, ≈ 50 s |
-| | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 455 s |
+| | `Lean` (includes both): 171,705 constants, 2,860 groups | all verified, ≈ 43 s |
+| Real projects (arena) | `con-leche`: 27,959 constants, 333 groups | all verified, ≈ 39 s |
+| | `cedar`: 148,832 constants, 1,921 groups | all verified, ≈ 45 s |
+| | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 348 s |
 | Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 26 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
 | Mutation tests | 16 targeted corruptions of a valid export, 6 inputs that are not exports | all rejected, for the intended reason |
 | | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, ≈ 824 s, 10 GB peak |
 | Not yet | `navier-stokes-euler` (needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS) | not complete |
 
-Lean 4.35.0-rc4 exports, JDK 21, an Apple-silicon laptop that was not idle. Times are indicative.
+Lean 4.35.0-rc4 exports for the Lean libraries, the arena's 4.34.1 exports for the projects and Mathlib; JDK 21, an
+Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 on 12 October 2026. Times are indicative.
 
 ## Install
 
