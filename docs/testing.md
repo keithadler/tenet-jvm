@@ -72,8 +72,8 @@ and become *accepted* only when a non-empty file with a metadata record has been
 
 ## What this does not show
 
-- **Mathlib has not been checked to completion yet.** It is the arena's reference for time and memory and by
-  far the largest test.
+- **Mathlib was checked once, on one machine.** 12 October 2026, Lean 4.34.1 export, JDK 21, `-Xmx9g`: 718,577
+  constants, all verified, 823.6 s, peak footprint about 10 GB. Linux and the arena's own runner are untested.
 - **The arena suite is a floor, not a ceiling.** Passing it says no *known* bug is present.
 - **Both kinds of error are possible in the kernel's own search for a proof of defeq**: wrongly rejecting a
   valid proof is likely to be noticed; wrongly accepting an invalid one is not. The mutation tests and the

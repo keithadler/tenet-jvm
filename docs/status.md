@@ -1,6 +1,6 @@
 # Status
 
-Version 0.1.0, 11 October 2026.
+Version 0.1.2, 12 October 2026.
 
 ## Verified against real exports (everything accepted, nothing taken on trust)
 
@@ -44,9 +44,9 @@ over `tutorial`, `bugs`, `corner-cases`, `other` and `perf`. See [arena](arena.m
 
 ## Known gaps
 
-- **Mathlib has not completed.** It is the arena's reference for time and memory. A run reached 59,000
-  declarations in minutes; some category-theory declarations are far slower here than in the official
-  kernel (one goal takes about 8 s against a fraction of a second), so total time is the open question.
+- **Mathlib is checked, but it is memory-hungry.** A full Lean 4.34.1 Mathlib export (718,577 constants, 6,798
+  inductive blocks) verifies in about 824 s on an Apple-silicon laptop, with a peak footprint near 10 GB
+  (`-Xmx9g`). Some category-theory declarations are still slower here than in the official kernel.
 - **`navier-stokes-euler`** has not been run: it needs Lean 4.34.0-rc2, whose `lake` crashes on the
   machine the project was developed on.
 - **No dependency report**: the kernel lists the axioms an export declares but does not say which theorem

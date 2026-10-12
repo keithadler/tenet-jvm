@@ -14,8 +14,8 @@ gets all 197 decided tests right (141 + 18 + 19 + 9 + 28 across the groups, minu
 answer is allowed), with none wrongly accepted, none wrongly rejected and none declined or timed out. See
 [testing](testing.md). The first two criteria are therefore met on everything that has been run.
 
-Not yet run: the real-world libraries `cedar`, `cslib`, `navier-stokes-euler`, `con-leche` and, above all,
-`mathlib`. Criterion 3 cannot be claimed until then.
+Mathlib (Lean 4.34.1 export) verifies completely in about 824 s on the author's laptop (10 GB peak). Not run:
+`navier-stokes-euler`. The arena's own runner and Linux have not been tried.
 
 ## Submitting
 

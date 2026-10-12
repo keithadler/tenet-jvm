@@ -16,9 +16,8 @@ them at once, and it is maintained alongside Tenet and the rest of the Lean veri
 
 ## Status
 
-Version 0.1.0. It checks the Lean libraries it has been given, and it passes every decided test of the
-[Lean Kernel Arena](https://arena.lean-lang.org/) groups that have been run. It has **not** been run on
-Mathlib yet. [`docs/status.md`](docs/status.md) is the current account; [`docs/testing.md`](docs/testing.md)
+Version 0.1.2. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
+[Lean Kernel Arena](https://arena.lean-lang.org/) groups that have been run. [`docs/status.md`](docs/status.md) is the current account; [`docs/testing.md`](docs/testing.md)
 says exactly what was run.
 
 ```
@@ -56,7 +55,8 @@ bin/tenet-jvm ../init.ndjson
 | | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 455 s |
 | Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (215 tests) | 197 decided tests right (and 18 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
 | Mutation tests | 16 targeted corruptions of a valid export, 6 inputs that are not exports | all rejected, for the intended reason |
-| Not yet | Mathlib (running, slow on some category-theory goals), `navier-stokes-euler` (needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS) | not complete |
+| | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, ≈ 824 s, 10 GB peak |
+| Not yet | `navier-stokes-euler` (needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS) | not complete |
 
 Lean 4.35.0-rc4 exports, JDK 21, an Apple-silicon laptop that was not idle. Times are indicative.
 
