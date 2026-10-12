@@ -9,13 +9,11 @@ The [Lean Kernel Arena](https://arena.lean-lang.org/) ranks checkers, in this or
 
 ## Where tenet-jvm stands
 
-Run locally against the arena's `tutorial`, `bugs`, `corner-cases`, `other` and `perf` groups, tenet-jvm
-gets all 197 decided tests right (223 tests at arena commit 76ddcf8, of which 26 allow either answer; the
-newest of those are the corner cases for the planned eta changes), with none wrongly accepted, none wrongly rejected and none declined or timed out. See
-[testing](testing.md). The first two criteria are therefore met on everything that has been run.
-
-Mathlib (Lean 4.34.1 export) verifies completely in about 824 s on the author's laptop (10 GB peak). Not run:
-`navier-stokes-euler`. The arena's own runner and Linux have not been tried.
+Merged on 12 October 2026 (leanprover/lean-kernel-arena#267). On the arena's own runner, version 0.1.2 scored
+206 correct, 24 "either", 1 incorrect and 2 errors: Mathlib verified in 30.1 min; `navier-stokes-euler` was
+wrongly rejected (a universe-level comparison bug, fixed in 0.1.3); and the two `eta-struct-major-*-no-whnf`
+corner cases timed out, as they do for the official kernel. Locally the small groups score 197 correct, 24
+"either", 0 wrong, 2 timed out, the same as on the runner.
 
 ## Submitting
 

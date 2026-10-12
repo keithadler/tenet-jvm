@@ -43,7 +43,7 @@ cd ../tenet-jvm
 uv run --with pyyaml tools/arena_check.py ../lean-kernel-arena
 ```
 
-Result (arena at 76ddcf8, 12 October 2026): **197 correct, 26 "either", 0 wrongly accepted, 0 wrongly rejected, 0 declined or timed out**
+Result (arena at 76ddcf8, 12 October 2026): **197 correct, 24 "either", 0 wrongly accepted, 0 wrongly rejected, 2 timed out** (the two `eta-struct-major-*-no-whnf` cases; see [status](status.md))
 (tutorial 141 sub-tests, bugs 18, corner cases 19, other 9, perf 28).
 
 The first run was not clean: it wrongly accepted two soundness-bug tests and wrongly rejected one level
@@ -73,7 +73,10 @@ and become *accepted* only when a non-empty file with a metadata record has been
 ## What this does not show
 
 - **Mathlib was checked once, on one machine.** 12 October 2026, Lean 4.34.1 export, JDK 21, `-Xmx9g`: 718,577
-  constants, all verified, 823.6 s, peak footprint about 10 GB. Linux and the arena's own runner are untested.
+  constants, all verified, 823.6 s, peak footprint about 10 GB; two further runs on 0.1.3 the same day took 1,460 s and 1,127 s
+  with other work on the machine, and an A/B of the two builds on one export was identical. The arena's own runner (Linux, Nix) then verified it in
+  30.1 min. The same arena run found the `navier-stokes-euler` rejection described in [status](status.md): the
+  arena's library tests catch what the small groups do not, and should be run before every release.
 - **The arena suite is a floor, not a ceiling.** Passing it says no *known* bug is present.
 - **Both kinds of error are possible in the kernel's own search for a proof of defeq**: wrongly rejecting a
   valid proof is likely to be noticed; wrongly accepting an invalid one is not. The mutation tests and the

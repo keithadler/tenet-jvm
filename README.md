@@ -16,7 +16,7 @@ them at once, and it is maintained alongside Tenet and the rest of the Lean veri
 
 ## Status
 
-Version 0.1.2. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
+Version 0.1.3. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
 [Lean Kernel Arena](https://arena.lean-lang.org/) groups that have been run. [`docs/status.md`](docs/status.md) is the current account; [`docs/testing.md`](docs/testing.md)
 says exactly what was run.
 
@@ -53,13 +53,13 @@ bin/tenet-jvm ../init.ndjson
 | Real projects (arena) | `con-leche`: 27,959 constants, 333 groups | all verified, ≈ 39 s |
 | | `cedar`: 148,832 constants, 1,921 groups | all verified, ≈ 45 s |
 | | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 348 s |
-| Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 26 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
-| Mutation tests | 16 targeted corruptions of a valid export, 6 inputs that are not exports | all rejected, for the intended reason |
-| | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, ≈ 824 s, 10 GB peak |
-| Not yet | `navier-stokes-euler` (needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS) | not complete |
+| Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 24 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected**, 2 timed out (the two `eta-struct-major-*-no-whnf` corner cases, on which the official kernel does not terminate either) |
+| Mutation tests | 17 targeted corruptions of a valid export, 6 inputs that are not exports, 1 export that must be accepted | all as intended |
+| | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, 14–19 min over three runs on the laptop (10 GB peak), 30.1 min on the arena's own runner |
+| Found a bug | `navier-stokes-euler` (90,706 constants; run by the arena, since its Lean 4.34.0-rc2 `lake` crashes on the author's macOS) | version 0.1.2 wrongly rejected one structure (`CopyPotential`, a universe-level comparison bug, fixed in 0.1.3 and now a test); the full library has not yet been re-run on the fixed build |
 
 Lean 4.35.0-rc4 exports for the Lean libraries, the arena's 4.34.1 exports for the projects and Mathlib; JDK 21, an
-Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 on 12 October 2026. Times are indicative.
+Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 and v0.1.3 on 12 October 2026. Times are indicative.
 
 ## Install
 
