@@ -147,9 +147,9 @@ def input_checks():
     bad = 0
     for name, text in cases.items():
         code = run_text(text)
-        verdict = "ok" if code in (1, 3) else f"ACCEPTED({code})"
+        verdict = "ok" if code == 1 else f"ACCEPTED({code})" if code == 0 else f"CRASH({code})"
         print(f"{verdict:8} input: {name}")
-        bad += code not in (1, 3)
+        bad += code != 1
     return bad
 
 

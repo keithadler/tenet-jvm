@@ -64,7 +64,15 @@ public final class ExportReader {
         while ((line = in.readLine()) != null) {
             if (line.isEmpty()) continue;
             lines++;
-            Map<String, Object> o = m(Json.parse(line));
+            Map<String, Object> o;
+            try {
+                o = m(Json.parse(line));
+            } catch (KernelException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                // A line cut off mid-record (an exporter that died, a short download) or not JSON at all.
+                throw new KernelException("malformed export: line " + (lines) + " is not a complete JSON object");
+            }
             if (lines == 1 && !o.containsKey("meta")) throw new KernelException("not a lean4export file: the first line is not the metadata record");
             handle(o, sink);
         }
