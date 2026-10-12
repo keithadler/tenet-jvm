@@ -1,0 +1,43 @@
+name: Arena library
+# Checks one of the Lean Kernel Arena's whole-library tests on the current commit, using the arena's own
+# tooling to build the project and export it. Run by hand; navier-stokes-euler needs Lean 4.34.0-rc2,
+# whose lake crashes on the author's macOS, so this is where it gets checked.
+on:
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Arena test name (tests/<name>.yaml)"
+        default: navier-stokes-euler
+      arena_rev:
+        description: "lean-kernel-arena commit"
+        default: master
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: astral-sh/setup-uv@v5
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - run: make
+      - name: Build the arena test
+        run: |
+          git clone --depth 1 https://github.com/leanprover/lean-kernel-arena ../arena
+          cd ../arena && git fetch --depth 1 origin "${{ inputs.arena_rev }}" && git checkout FETCH_HEAD
+          uv run --with pyyaml lka.py build-test "${{ inputs.test }}"
+          ls -la _build/tests/"${{ inputs.test }}".ndjson
+          df -h /
+      - name: Check it
+        run: |
+          /usr/bin/time -v bin/tenet-jvm ../arena/_build/tests/"${{ inputs.test }}".ndjson 2> time.txt; rc=$?
+          grep -E "Maximum resident|Elapsed" time.txt
+          echo "exit code $rc"; exit $rc
