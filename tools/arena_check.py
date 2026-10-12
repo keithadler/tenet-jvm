@@ -45,10 +45,11 @@ def main():
             except subprocess.TimeoutExpired:
                 code = 124
             dt = time.time() - t0
-            if exp == "either":
-                either += 1; status = "either"
-            elif code == 2 or code not in (0, 1):
+            # A timeout or crash is an error however the test is scored, exactly as the arena counts it.
+            if code == 2 or code not in (0, 1):
                 declined.append((label, code)); status = f"DECLINED({code})"
+            elif exp == "either":
+                either += 1; status = "either"
             elif (code == 0) == (exp == "accept"):
                 ok += 1; status = "ok"
             elif exp == "reject":

@@ -281,13 +281,19 @@ public abstract class Level {
         return forAllCases(this, o, Level::geqCore);
     }
 
+    // The same case analysis as the reference kernel's is_geq_core. The offset comparison applies when the
+    // bases agree or when the *right-hand* base is zero (b+k >= k' for every b). It must not apply when only
+    // the left-hand base is zero: 3 >= u+1 is false for u >= 3, and a check that says otherwise lets a
+    // constructor field live in a universe above its inductive type.
     private static boolean geqCore(Level l1, Level l2) {
         if (l1.equals(l2) || l2.isZero()) return true;
         if (l2.kind == Kind.MAX) return geqCore(l1, ((Max) l2).lhs) && geqCore(l1, ((Max) l2).rhs);
         if (l1.kind == Kind.MAX && (geqCore(((Max) l1).lhs, l2) || geqCore(((Max) l1).rhs, l2))) return true;
+        if (l2.kind == Kind.IMAX) return geqCore(l1, ((IMax) l2).lhs) && geqCore(l1, ((IMax) l2).rhs);
+        if (l1.kind == Kind.IMAX) return geqCore(((IMax) l1).rhs, l2);
         Level b1 = l1.base(), b2 = l2.base();
         int k1 = l1.offset(), k2 = l2.offset();
-        if (b1.equals(b2) || b1.isZero()) return k1 >= k2;
+        if (b1.equals(b2) || b2.isZero()) return k1 >= k2;
         if (k1 == k2 && k1 > 0) return geqCore(b1, b2);
         return false;
     }

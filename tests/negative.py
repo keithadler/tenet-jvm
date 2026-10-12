@@ -105,7 +105,40 @@ def rec_extra_orphan(recs):
     blk["recs"].append(extra)
 
 
-MUTANTS = [thm_wrong_value, thm_undeclared_universe, def_wrong_type, rec_rules_swapped, rec_rule_field_count, rec_wrong_type,
+def ind_field_universe_too_big(recs):
+    # Put HAdd.{u,v,w} in Sort 3 (Type 2) while its field hAdd : α → β → γ stays at level max u v w + 1,
+    # which exceeds 3 for large u. The kernel must refuse the constructor ("too big"); a level comparison
+    # that treats a constant left-hand side as "at least anything" accepts this.
+    names = {}
+    for r in recs:
+        if "str" in r:
+            names[r["in"]] = (names.get(r["str"]["pre"], "") + "." + r["str"]["str"]).lstrip(".")
+    ex = {r["ie"]: r for r in recs if "ie" in r}
+    nl = max(r["il"] for r in recs if "il" in r) + 1
+    ne = max(ex) + 1
+    blk_i = next(i for i, r in enumerate(recs) if key(r) == "inductive"
+                 and any(names[t["name"]] == "HAdd" for t in r["inductive"]["types"]))
+    t = next(t for t in recs[blk_i]["inductive"]["types"] if names[t["name"]] == "HAdd")
+    # level 3 = succ (succ (succ 0)); level 0 is the implicit id 0
+    new = [{"succ": 0, "il": nl}, {"succ": nl, "il": nl + 1}, {"succ": nl + 1, "il": nl + 2}, {"sort": nl + 2, "ie": ne}]
+    # rebuild the Pi telescope of the type with the new Sort at its end
+    chain, e = [], ex[t["type"]]
+    while key(e) == "forallE":
+        chain.append(e)
+        e = ex[e["forallE"]["body"]]
+    assert key(e) == "sort"
+    body = ne
+    for b in reversed(chain):
+        ne += 1
+        f = copy.deepcopy(b)
+        f["ie"], f["forallE"]["body"] = ne, body
+        new.append(f)
+        body = ne
+    t["type"] = body
+    recs[blk_i:blk_i] = new
+
+
+MUTANTS = [ind_field_universe_too_big, thm_wrong_value, thm_undeclared_universe, def_wrong_type, rec_rules_swapped, rec_rule_field_count, rec_wrong_type,
            rec_k_flag_flipped, rec_k_flag_on_nat, ind_isrec_flipped, ind_num_params, ind_num_indices, ind_num_nested,
            ind_ctor_dropped_from_type, ctor_cidx, ctor_field_count, rec_extra_orphan]
 
@@ -153,11 +186,21 @@ def input_checks():
     return bad
 
 
+# Exports that must be accepted: each one is a declaration an earlier version of the checker wrongly rejected.
+POSITIVE = {
+    "copy_potential.ndjson": "structure in Type (u+1) with a Nat field: u+2 >= 1 (navier-stokes-euler, arena)",
+}
+
+
 def main():
     bad = 0
     code, out = run(load())
     print(f"{'ok' if code == 0 else 'FAIL':5} unmodified export is accepted")
     bad += code != 0
+    for name, why in POSITIVE.items():
+        code = subprocess.run([LAUNCHER, os.path.join(HERE, "exports", name)], capture_output=True, text=True, timeout=120).returncode
+        print(f"{'ok' if code == 0 else f'REJECTED({code})':8} accepted: {name}  ({why})")
+        bad += code != 0
     for m in MUTANTS:
         recs = load()
         m(recs)
@@ -167,7 +210,7 @@ def main():
         print(f"{verdict:8} {m.__name__:30} {reason}")
         bad += code != 1
     bad += input_checks()
-    print(f"\n{len(MUTANTS)} mutants and 6 malformed inputs, {bad} problem(s)")
+    print(f"\n{len(MUTANTS)} mutants, {len(POSITIVE)} must-accept exports and 6 malformed inputs, {bad} problem(s)")
     sys.exit(1 if bad else 0)
 
 

@@ -1,4 +1,5 @@
 out/
 *.ndjson
 !tests/exports/nat_add_comm.ndjson
+!tests/exports/copy_potential.ndjson
 .DS_Store
