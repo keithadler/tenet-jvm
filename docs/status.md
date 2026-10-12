@@ -48,14 +48,14 @@ over `tutorial`, `bugs`, `corner-cases`, `other` and `perf`. See [arena](arena.m
   inductive blocks) verifies in 14 to 19 minutes on an Apple-silicon laptop (824 s, 1,460 s and 1,127 s over three runs, the
   spread being the machine's, not the kernel's: an isolated export times identically on 0.1.2 and 0.1.3), with a peak footprint near 10 GB
   (`-Xmx9g`). Some category-theory declarations are still slower here than in the official kernel.
-- **`navier-stokes-euler` has not been re-run since the fix.** The arena ran version 0.1.2 on it and found a wrong
+- **`navier-stokes-euler` is verified on 0.1.3** (129,845 constants, 421 s, 5.3 GB, in GitHub Actions via `arena-library.yml`).
+  The history: The arena ran version 0.1.2 on it and found a wrong
   rejection: `NavierStokes.MixedAxisPreservation.CopyPotential`, a structure in `Type (u+1)` with a `Nat` field,
   failed the constructor universe check because `u+2 ≥ 1` was decided as false. The same comparison decided
   `3 ≥ u+1` as true, which would have let a constructor field live above its inductive type; no test had probed
   that direction. Both are fixed in 0.1.3 (`Level.geqCore` now follows the reference kernel's `is_geq_core`
   case for case), the structure's export is a must-accept test and a mutant covers the unsound direction. The
-  full library needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS, so the re-run waits for the
-  arena.
+  full library needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS, so it is re-run in CI.
 - **Two arena corner cases time out.** `eta-struct-major-no-whnf` and `eta-struct-major-and-no-whnf` ask for
   structure eta on a recursor's major premise *before* reducing it, a change the official kernel is
   considering (lean4#14977). tenet-jvm, like the official kernel today, reduces first and does not terminate.

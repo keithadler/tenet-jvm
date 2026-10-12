@@ -56,7 +56,7 @@ bin/tenet-jvm ../init.ndjson
 | Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 24 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected**, 2 timed out (the two `eta-struct-major-*-no-whnf` corner cases, on which the official kernel does not terminate either) |
 | Mutation tests | 17 targeted corruptions of a valid export, 6 inputs that are not exports, 1 export that must be accepted | all as intended |
 | | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, 14–19 min over three runs on the laptop (10 GB peak), 30.1 min on the arena's own runner |
-| Found a bug | `navier-stokes-euler` (90,706 constants; run by the arena, since its Lean 4.34.0-rc2 `lake` crashes on the author's macOS) | version 0.1.2 wrongly rejected one structure (`CopyPotential`, a universe-level comparison bug, fixed in 0.1.3 and now a test); the full library has not yet been re-run on the fixed build |
+| | `navier-stokes-euler` (129,845 constants, 1,614 groups; built and checked in GitHub Actions, since its Lean 4.34.0-rc2 `lake` crashes on the author's macOS) | all verified on 0.1.3, ≈ 421 s, 5.3 GB peak. Version 0.1.2 wrongly rejected one structure here (`CopyPotential`, a universe-level comparison bug found by the arena, fixed in 0.1.3 and now a test) |
 
 Lean 4.35.0-rc4 exports for the Lean libraries, the arena's 4.34.1 exports for the projects and Mathlib; JDK 21, an
 Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 and v0.1.3 on 12 October 2026. Times are indicative.
