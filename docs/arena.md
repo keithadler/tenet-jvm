@@ -10,8 +10,8 @@ The [Lean Kernel Arena](https://arena.lean-lang.org/) ranks checkers, in this or
 ## Where tenet-jvm stands
 
 Run locally against the arena's `tutorial`, `bugs`, `corner-cases`, `other` and `perf` groups, tenet-jvm
-gets all 197 decided tests right (141 + 18 + 19 + 9 + 28 across the groups, minus the tests where either
-answer is allowed), with none wrongly accepted, none wrongly rejected and none declined or timed out. See
+gets all 197 decided tests right (223 tests at arena commit 76ddcf8, of which 26 allow either answer; the
+newest of those are the corner cases for the planned eta changes), with none wrongly accepted, none wrongly rejected and none declined or timed out. See
 [testing](testing.md). The first two criteria are therefore met on everything that has been run.
 
 Mathlib (Lean 4.34.1 export) verifies completely in about 824 s on the author's laptop (10 GB peak). Not run:

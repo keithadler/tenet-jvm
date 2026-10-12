@@ -53,7 +53,7 @@ bin/tenet-jvm ../init.ndjson
 | Real projects (arena) | `con-leche`: 27,959 constants, 333 groups | all verified, ≈ 35 s |
 | | `cedar`: 148,832 constants, 1,921 groups | all verified, ≈ 50 s |
 | | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 455 s |
-| Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (215 tests) | 197 decided tests right (and 18 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
+| Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 26 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected, 0 declined** |
 | Mutation tests | 16 targeted corruptions of a valid export, 6 inputs that are not exports | all rejected, for the intended reason |
 | | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, ≈ 824 s, 10 GB peak |
 | Not yet | `navier-stokes-euler` (needs Lean 4.34.0-rc2, whose `lake` crashes on the author's macOS) | not complete |

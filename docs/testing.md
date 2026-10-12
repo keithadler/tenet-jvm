@@ -43,7 +43,7 @@ cd ../tenet-jvm
 uv run --with pyyaml tools/arena_check.py ../lean-kernel-arena
 ```
 
-Result: **197 correct, 18 "either", 0 wrongly accepted, 0 wrongly rejected, 0 declined or timed out**
+Result (arena at 76ddcf8, 12 October 2026): **197 correct, 26 "either", 0 wrongly accepted, 0 wrongly rejected, 0 declined or timed out**
 (tutorial 141 sub-tests, bugs 18, corner cases 19, other 9, perf 28).
 
 The first run was not clean: it wrongly accepted two soundness-bug tests and wrongly rejected one level
