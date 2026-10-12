@@ -228,7 +228,12 @@ public abstract class Expr {
      * becomes false; remembering it spares the next comparison of two big, unshared but equal copies from
      * walking them again. Bounded: when full it is simply emptied.
      */
-    private static final java.util.Set<Pair> KNOWN_EQUAL = new java.util.HashSet<>();
+    private static java.util.Set<Pair> KNOWN_EQUAL = new java.util.HashSet<>();
+
+    /** Forgets the persistent equal-pairs memo; called between declarations so it cannot grow without bound. */
+    static void forgetKnownEqual() {
+        if (KNOWN_EQUAL.size() > 1000) KNOWN_EQUAL = new java.util.HashSet<>(); else KNOWN_EQUAL.clear();
+    }
     private static final int KNOWN_EQUAL_CAP = 4_000_000;
 
     private static void rememberEqual(java.util.Set<Pair> done) {

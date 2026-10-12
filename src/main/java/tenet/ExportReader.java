@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 public final class ExportReader {
     private Name[] names = new Name[1 << 12];
     private Level[] levels = new Level[1 << 12];
-    private Expr[] exprs = new Expr[1 << 14];
+    final ExprStore store = new ExprStore(this);
     public String formatVersion = "?", leanVersion = "?";
     public long lines;
 
@@ -41,10 +41,35 @@ public final class ExportReader {
         return l;
     }
 
+    /** The expression with this id, as an object; built on demand and shared within one declaration. */
     private Expr expr(Object id) {
-        Expr e = exprs[(int) (long) (Long) id];
-        if (e == null) throw new KernelException("undefined expr id " + id);
-        return e;
+        return store.get((int) (long) (Long) id);
+    }
+
+    /** A proof term: built into scratch space and not kept by the store. */
+    private Expr proofExpr(Object id) {
+        return store.getTemp((int) (long) (Long) id);
+    }
+
+    private int eid(Object id) {
+        int x = (int) (long) (Long) id;
+        if (!store.defined(x)) throw new KernelException("undefined expr id " + id);
+        return x;
+    }
+
+    Name nameAt(int id) { return names[id]; }
+    Level levelAt(int id) { return levels[id]; }
+
+    private int nid(Object id) {
+        int x = (int) (long) (Long) id;
+        if (x >= names.length || names[x] == null) throw new KernelException("undefined name id " + id);
+        return x;
+    }
+
+    private int lid(Object id) {
+        int x = (int) (long) (Long) id;
+        if (x >= levels.length || levels[x] == null) throw new KernelException("undefined level id " + id);
+        return x;
     }
 
     private List<Name> nameList(Object o) {
@@ -107,50 +132,60 @@ public final class ExportReader {
                 levels[id] = Level.imax(level(a.get(0)), level(a.get(1)));
             } else levels[id] = Level.param(name(o.get("param")));
         } else if (o.containsKey("ie")) {
-            int id = i(o.get("ie"));
-            exprs = grow(exprs, id);
-            exprs[id] = parseExpr(o);
+            writeExpr(i(o.get("ie")), o);
         } else {
             decl(o, sink);
         }
     }
 
-    private Expr parseExpr(Map<String, Object> o) {
-        if (o.containsKey("bvar")) return Expr.bvar(i(o.get("bvar")));
-        if (o.containsKey("sort")) return Expr.sort(level(o.get("sort")));
+    /** Records an expression node in the compact store; nothing is allocated per node. */
+    private void writeExpr(int id, Map<String, Object> o) {
+        if (o.containsKey("bvar")) { store.bvar(id, i(o.get("bvar"))); return; }
+        if (o.containsKey("sort")) { store.sort(id, lid(o.get("sort"))); return; }
         if (o.containsKey("const")) {
             Map<String, Object> c = m(o.get("const"));
-            List<Level> ls = new ArrayList<>();
-            for (Object x : (List<?>) c.get("us")) ls.add(level(x));
-            return Expr.cnst(name(c.get("name")), ls);
+            List<?> us = (List<?>) c.get("us");
+            int[] ls = new int[us.size()];
+            for (int k = 0; k < ls.length; k++) ls[k] = lid(us.get(k));
+            store.cnst(id, nid(c.get("name")), ls);
+            return;
         }
         if (o.containsKey("app")) {
             Map<String, Object> a = m(o.get("app"));
-            return Expr.app(expr(a.get("fn")), expr(a.get("arg")));
+            store.app(id, eid(a.get("fn")), eid(a.get("arg")));
+            return;
         }
         if (o.containsKey("lam")) {
             Map<String, Object> a = m(o.get("lam"));
-            return Expr.lam(name(a.get("name")), expr(a.get("type")), expr(a.get("body")), (String) a.get("binderInfo"));
+            store.binder(id, false, nid(a.get("name")), eid(a.get("type")), eid(a.get("body")), (String) a.get("binderInfo"));
+            return;
         }
         if (o.containsKey("forallE")) {
             Map<String, Object> a = m(o.get("forallE"));
-            return Expr.pi(name(a.get("name")), expr(a.get("type")), expr(a.get("body")), (String) a.get("binderInfo"));
+            store.binder(id, true, nid(a.get("name")), eid(a.get("type")), eid(a.get("body")), (String) a.get("binderInfo"));
+            return;
         }
         if (o.containsKey("letE")) {
             Map<String, Object> a = m(o.get("letE"));
-            return Expr.let(name(a.get("name")), expr(a.get("type")), expr(a.get("value")), expr(a.get("body")));
+            store.let(id, nid(a.get("name")), eid(a.get("type")), eid(a.get("value")), eid(a.get("body")));
+            return;
         }
         if (o.containsKey("proj")) {
             Map<String, Object> a = m(o.get("proj"));
-            return Expr.proj(name(a.get("typeName")), i(a.get("idx")), expr(a.get("struct")));
+            store.proj(id, nid(a.get("typeName")), i(a.get("idx")), eid(a.get("struct")));
+            return;
         }
-        if (o.containsKey("natVal")) return Expr.nat(new BigInteger((String) o.get("natVal")));
-        if (o.containsKey("strVal")) return Expr.str((String) o.get("strVal"));
-        if (o.containsKey("mdata")) return expr(m(o.get("mdata")).get("expr"));
+        if (o.containsKey("natVal")) { store.nat(id, new BigInteger((String) o.get("natVal"))); return; }
+        if (o.containsKey("strVal")) { store.str(id, (String) o.get("strVal")); return; }
+        if (o.containsKey("mdata")) { store.alias(id, eid(m(o.get("mdata")).get("expr"))); return; }
         throw new KernelException("unknown expression node: " + o.keySet());
     }
 
     private void decl(Map<String, Object> o, Consumer<Object> sink) {
+        declCore(o, sink);
+    }
+
+    private void declCore(Map<String, Object> o, Consumer<Object> sink) {
         if (o.containsKey("axiom")) {
             Map<String, Object> d = m(o.get("axiom"));
             sink.accept(new Decl.Axiom(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), b(d.get("isUnsafe"))));
@@ -164,7 +199,7 @@ public final class ExportReader {
                     hints, height, (String) d.get("safety")));
         } else if (o.containsKey("thm")) {
             Map<String, Object> d = m(o.get("thm"));
-            sink.accept(new Decl.Thm(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), expr(d.get("value"))));
+            sink.accept(new Decl.Thm(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), proofExpr(d.get("value")), store, i(d.get("value"))));
         } else if (o.containsKey("opaque")) {
             Map<String, Object> d = m(o.get("opaque"));
             sink.accept(new Decl.Opaque(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), expr(d.get("value")),

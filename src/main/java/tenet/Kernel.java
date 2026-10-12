@@ -57,7 +57,8 @@ public final class Kernel {
             case THM: {
                 checkType(d);
                 if (!tc.isPropType(d.type)) throw new KernelException("theorem type is not a proposition: " + d.name);
-                checkValue(d, ((Decl.Thm) d).value);
+                checkValue(d, ((Decl.Thm) d).value());
+                ((Decl.Thm) d).releaseValue();
                 env.add(d);
                 break;
             }

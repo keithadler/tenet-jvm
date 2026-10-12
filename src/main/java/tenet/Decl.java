@@ -40,8 +40,37 @@ public abstract class Decl {
     }
 
     public static final class Thm extends Decl {
-        public final Expr value;
-        public Thm(Name n, List<Name> lps, Expr t, Expr v) { super(Kind.THM, n, lps, t); value = v; }
+        private Expr value;
+        private java.lang.ref.SoftReference<Expr> rebuilt;
+        private final ExprStore store;
+        private final int valueId;
+
+        public Thm(Name n, List<Name> lps, Expr t, Expr v) { this(n, lps, t, v, null, -1); }
+
+        Thm(Name n, List<Name> lps, Expr t, Expr v, ExprStore store, int valueId) {
+            super(Kind.THM, n, lps, t);
+            this.value = v;
+            this.store = store;
+            this.valueId = valueId;
+        }
+
+        /** The proof term. After {@link #releaseValue} it is rebuilt from the compact store when asked for. */
+        public Expr value() {
+            Expr v = value;
+            if (v != null) return v;
+            java.lang.ref.SoftReference<Expr> r = rebuilt;
+            v = r == null ? null : r.get();
+            if (v == null) {
+                v = store.materialize(valueId);
+                rebuilt = new java.lang.ref.SoftReference<>(v);
+            }
+            return v;
+        }
+
+        /** Proof terms are the largest terms and almost never unfolded, so they are not kept as objects. */
+        void releaseValue() {
+            if (store != null) value = null;
+        }
     }
 
     public static final class Opaque extends Decl {
@@ -117,7 +146,10 @@ public abstract class Decl {
     /** The definition body, if this constant is unfoldable by delta. */
     public Expr value() {
         if (this instanceof Def) return ((Def) this).value;
-        if (this instanceof Thm) return ((Thm) this).value;
+        if (this instanceof Thm) return ((Thm) this).value();
         return null;
     }
+
+    /** Can this constant be unfolded? (Cheaper than {@link #value()}, which may rebuild a proof term.) */
+    public boolean hasValue() { return this instanceof Def || this instanceof Thm; }
 }

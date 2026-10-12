@@ -33,7 +33,6 @@ public final class TypeChecker {
     private Map<Expr, Expr> inferOnlyCache = new HashMap<>();
     private Map<Expr, Expr> inferCheckedCache = new HashMap<>();
     private Map<Expr, Expr> whnfCoreCache = new HashMap<>();
-    private Map<Expr, Expr> whnfCoreCheapCache = new HashMap<>();
     private Map<Expr, Expr> whnfCache = new HashMap<>();
     private Map<Expr, Expr> unfoldCache = new HashMap<>();
     private Set<List<Expr>> eqCache = new HashSet<>();
@@ -52,11 +51,11 @@ public final class TypeChecker {
         this.lparams = lparams;
         this.safetyRank = safetyRank;
         lctx.clear();
+        Expr.forgetKnownEqual();
         // clear() costs time proportional to the table's capacity, which stays large after a big declaration
         inferOnlyCache = fresh(inferOnlyCache);
         inferCheckedCache = fresh(inferCheckedCache);
         whnfCoreCache = fresh(whnfCoreCache);
-        whnfCoreCheapCache = fresh(whnfCoreCheapCache);
         whnfCache = fresh(whnfCache);
         unfoldCache = fresh(unfoldCache);
         deltaStepCache = fresh(deltaStepCache);
@@ -300,10 +299,11 @@ public final class TypeChecker {
             case BVAR: case SORT: case CONST: case LAM: case PI: case NAT: case STR: return e;
             default: break;
         }
-        // Separate caches: a fully reduced result must not leak into "cheap" calls, which are meant to
-        // leave projections of unreduced structures stuck so that both sides of a comparison unfold in step.
+        // As in the reference kernel, only fully reduced results are stored, and a cheap call may read them.
+        // Storing cheap results as well (in a cache of their own) was measurably worse: the table grows to
+        // tens of millions of entries on large Mathlib declarations and the checker ends up in GC.
         boolean cheap = cheapRec || cheapProj;
-        Map<Expr, Expr> cache = cheap ? whnfCoreCheapCache : whnfCoreCache;
+        Map<Expr, Expr> cache = whnfCoreCache;
         Expr cached = cache.get(e);
         if (cached != null) return cached;
         Expr r;
@@ -333,7 +333,7 @@ public final class TypeChecker {
                 }
             }
         }
-        cache.put(e, r);
+        if (!cheap) cache.put(e, r);
         return r;
     }
 
@@ -500,7 +500,7 @@ public final class TypeChecker {
         Expr f = e.getAppFn();
         if (f.kind != Expr.Kind.CONST) return null;
         Decl d = env.get(((Expr.Const) f).name);
-        return d != null && d.value() != null ? d : null;
+        return d != null && d.hasValue() ? d : null;
     }
 
     private Expr unfoldConst(Expr.Const c, Decl d) {
