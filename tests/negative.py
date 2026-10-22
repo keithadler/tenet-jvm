@@ -192,6 +192,13 @@ POSITIVE = {
 }
 
 
+# Whole-file exports that must be rejected: proofs of False that checkers have accepted.
+NEGATIVE = {
+    "lean_0026_autoparam.ndjson": "leanbugs lean-0026, lean4#15704: a dishonest autoParam gives a Prop inductive large elimination; "
+                                  "the derived recursor eliminates only into Prop, so the exported one is refused",
+}
+
+
 def main():
     bad = 0
     code, out = run(load())
@@ -201,6 +208,10 @@ def main():
         code = subprocess.run([LAUNCHER, os.path.join(HERE, "exports", name)], capture_output=True, text=True, timeout=120).returncode
         print(f"{'ok' if code == 0 else f'REJECTED({code})':8} accepted: {name}  ({why})")
         bad += code != 0
+    for name, why in NEGATIVE.items():
+        code = subprocess.run([LAUNCHER, os.path.join(HERE, "exports", name)], capture_output=True, text=True, timeout=120).returncode
+        print(f"{'ok' if code == 1 else f'ACCEPTED({code})':8} rejected: {name}  ({why})")
+        bad += code != 1
     for m in MUTANTS:
         recs = load()
         m(recs)
@@ -210,7 +221,7 @@ def main():
         print(f"{verdict:8} {m.__name__:30} {reason}")
         bad += code != 1
     bad += input_checks()
-    print(f"\n{len(MUTANTS)} mutants, {len(POSITIVE)} must-accept exports and 6 malformed inputs, {bad} problem(s)")
+    print(f"\n{len(MUTANTS)} mutants, {len(POSITIVE)} must-accept and {len(NEGATIVE)} must-reject exports and 6 malformed inputs, {bad} problem(s)")
     sys.exit(1 if bad else 0)
 
 

@@ -17,9 +17,22 @@ this page is produced by `tools/leanbugs/report.py`. Entries without a `.lean` r
 | lean-0008 | v4.33.0 | **rejects** | **rejects** | **rejects** |
 | lean-0012 | v4.32.1 | **rejects** | **rejects** | **rejects** |
 | lean-0014 | v4.33.0 | **accepts** | **accepts** | **accepts** |
+| lean-0026 | v4.35.0-rc4 | **rejects** | accepts, then rejects after the fix | accepts, then rejects after the fix |
 
 Four of the proofs of `False` (0001, 0002, 0006, 0008) are also in the Lean Kernel Arena's `bugs/` group
 as independent exports, where all three kernels reject them too.
+
+## What lean-0026 shows
+
+lean-0026 (lean4#15704) is not in the Lean Kernel Arena and was closed upstream as outside the kernel's threat
+model: the C++ kernel strips `autoParam` and its relatives by name and assumes the official prelude, so a file that
+declares its own `autoParam` can give a `Prop` inductive large elimination and prove `False`. Its repro builds the
+environment in memory, so the export was made by running the repro's declarations through `lean4export`'s `Export`
+library (`tests/exports/lean_0026_autoparam.ndjson`, 199 lines). Lean's own kernel accepts it, and so did Tenet and
+tenet-hs, which follow the reference code. tenet-jvm rejects it, because its derived recursor eliminates only into
+`Prop`, which differs from the exported one; that looks incidental, not a deliberate defense. Tenet and tenet-hs now
+strip an annotation only when the result is definitionally equal to what was written (branch `annotation-honesty` in
+each repository), and reject the file.
 
 ## What lean-0003 shows
 
