@@ -16,7 +16,7 @@ them at once, and it is maintained alongside Tenet and the rest of the Lean veri
 
 ## Status
 
-Version 0.1.3. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
+Version 0.1.4. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
 [Lean Kernel Arena](https://arena.lean-lang.org/) groups that have been run. [`docs/status.md`](docs/status.md) is the current account; [`docs/testing.md`](docs/testing.md)
 says exactly what was run.
 

@@ -1,6 +1,6 @@
 # Status
 
-Version 0.1.3, 12 October 2026.
+Version 0.1.4, 24 October 2026. Checked against Lean 4.35.0 (Init, 59,349 constants, all verified); no code change from 0.1.3.
 
 ## Verified against real exports (everything accepted, nothing taken on trust)
 
