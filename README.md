@@ -59,7 +59,8 @@ bin/tenet-jvm ../init.ndjson
 | | `navier-stokes-euler` (129,845 constants, 1,614 groups; built and checked in GitHub Actions, since its Lean 4.34.0-rc2 `lake` crashes on the author's macOS) | all verified on 0.1.3, ≈ 421 s, 5.3 GB peak. Version 0.1.2 wrongly rejected one structure here (`CopyPotential`, a universe-level comparison bug found by the arena, fixed in 0.1.3 and now a test) |
 
 Lean 4.35.0-rc4 exports for the Lean libraries, the arena's 4.34.1 exports for the projects and Mathlib; JDK 21, an
-Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 and v0.1.3 on 12 October 2026. Times are indicative.
+Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 and v0.1.3 on 12 October 2026. Times are indicative. `Init` from Lean 4.35.0 (released
+12 October) was checked again on 23 October: 59,349 constants, all verified, 28.7 s.
 
 ## Install
 

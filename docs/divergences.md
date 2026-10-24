@@ -65,7 +65,9 @@ different strategy can turn a quick check into one that never finishes.
 - **Native evaluation.** Lean's kernel can evaluate `Lean.reduceBool` / `Lean.reduceNat` by running compiled
   code. An independent checker cannot, and does not try. A proof that depends on `native_decide` contains
   the axiom `Lean.ofReduceBool`, and the term `Lean.reduceBool c` does not reduce here, so such a proof is
-  expected to be rejected. This has not been tested: none of `Init`, `Std` or the arena's tests use it.
+  rejected. Checked on 2026-10-23 with a hand-written export in which `h : P (Lean.reduceBool b)` is offered as
+  `P true`: it is rejected, exit code 1. Lean 4.35.0 removed `reduce_native` from its kernel, so from 4.35.0 the
+  reference gives the same verdict. Up to 4.34 the reference could have accepted a proof that really ran compiled code.
 - **Axiom auditing.** The kernel accepts whatever axioms the export declares and reports them; deciding
   whether `propext`, `Classical.choice` and `Quot.sound` are acceptable is the reader's job.
 - **Versions other than export format 3.x.**
