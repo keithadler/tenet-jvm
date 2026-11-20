@@ -35,6 +35,53 @@ corrections are welcome.
   [a soundness bug in the official kernel](https://github.com/leanprover/lean4/pull/14613) that
   `bugs/proj-of-imax-prop` reproduces.
 
+## Rules that depend on the Lean version
+
+Lean 4.37.0-rc1 changed three rules of definitional equality (part of
+[lean4#14977](https://github.com/leanprover/lean4/issues/14977)). The verdict on a file therefore depends on the
+Lean that wrote it, and tenet-jvm reads that from the export's metadata record (`LeanVersion.kernelHasEta437`):
+4.37.0-rc1 and later get the new rules, everything earlier keeps the old ones, a 4.37 nightly counts from
+2026-10-21 (the changes landed on master on 2026-10-20), and a version that cannot be parsed gets the old rules.
+
+| Lean change | Up to 4.36 | From 4.37 |
+|---|---|---|
+| [#15103](https://github.com/leanprover/lean4/pull/15103) | Proof irrelevance is tried after the first `whnfCore` of both sides. | It is tried before, on the terms as given. |
+| [#15371](https://github.com/leanprover/lean4/pull/15371) | A recursor's major premise is always reduced; structure eta on it is skipped for every `Prop`. | A major premise that is a proof is not reduced; eta is skipped only when the recursor has as many universe parameters as the first inductive type of its block, so `And.rec` gets it. |
+| [#15373](https://github.com/leanprover/lean4/pull/15373) | Structure eta needs a fully applied constructor. | A partially applied constructor is compared after applying both sides to fresh variables for the missing fields. |
+
+Neither direction is the lenient one. Under the new rules `And.rec f ⟨x.1, x.2⟩ = And.rec f x` holds by `rfl` and
+under the old ones it does not; under the old rules a recursor applied to a proof that only *reduces* to a
+constructor (`Acc.rec` on a definition whose body is `Acc.intro ..`) computes, and under the new ones it is stuck.
+`tests/exports/eta437.ndjson` and `tests/exports/acc436.ndjson` hold one direction each, and `make test` checks
+both files under both rule sets. The expected verdicts were taken from Lean's own kernel, 4.36.0 and 4.37.0-rc1,
+replaying the same files.
+
+Lean 4.37.0-rc1 also made its `.olean` format version 4 and briefly extended the unit-like rule
+([#15372](https://github.com/leanprover/lean4/pull/15372), reverted before the release candidate). Neither
+concerns this checker: it reads exports only, and the unit-like rule is the one every release has had.
+
+## Corrected to match the reference
+
+Found while checking Lean 4.36.0 and 4.37.0-rc1, November 2026. None of these was known to produce a wrong
+verdict on a real export.
+
+- **Counts and indices that do not fit in 32 bits are refused.** They used to be read modulo 2^32, so a
+  projection index of 2^32 was index 0 and `numParams` of 2^32 was no parameters at all: a block with 2^32 added
+  to every `numParams` was accepted as the valid block it started as. Lean fixed the same class in its own kernel
+  in 4.37 ([lean4#16279](https://github.com/leanprover/lean4/pull/16279)). Such an export is now rejected as
+  malformed, which is stricter than the reference only in rejecting the whole file instead of one declaration.
+- **A loose bound variable in an inductive type or a constructor type is refused before anything else.** The
+  check existed, but ran after the parameters had been instantiated, by which point a loose variable in a
+  constructor field looked bound. The declaration from
+  [lean4#16489](https://github.com/leanprover/lean4/issues/16489) got as far as recursor generation. Lean checks
+  it up front since 4.37 ([lean4#16512](https://github.com/leanprover/lean4/pull/16512)); here it applies to
+  every version, since no well-formed export has one. This is stricter than Lean 4.36 and earlier.
+- **Arithmetic on `Nat` literals no longer refuses a term that mentions a free variable.** The reference has no
+  such test inside `reduce_nat`, only at one call site in lazy delta reduction, where tenet-jvm has it too. With
+  the extra test, `Nat.beq a b` whose arguments reduce to the literal 2^64 but mention a variable along the way
+  was compared through the unary definition. One theorem of `Init` in Lean 4.37
+  (`Nat.trailingZeros_rec_eq_bits`) does exactly that and did not finish.
+
 ## Strategy choices that change what is tried first
 
 None of these change what is accepted, only how a comparison is carried out. They are listed because a

@@ -30,29 +30,29 @@ public final class ExportReader {
     }
 
     private Name name(Object id) {
-        Name n = names[(int) (long) (Long) id];
+        Name n = names[i(id)];
         if (n == null) throw new KernelException("undefined name id " + id);
         return n;
     }
 
     private Level level(Object id) {
-        Level l = levels[(int) (long) (Long) id];
+        Level l = levels[i(id)];
         if (l == null) throw new KernelException("undefined level id " + id);
         return l;
     }
 
     /** The expression with this id, as an object; built on demand and shared within one declaration. */
     private Expr expr(Object id) {
-        return store.get((int) (long) (Long) id);
+        return store.get(i(id));
     }
 
     /** A proof term: built into scratch space and not kept by the store. */
     private Expr proofExpr(Object id) {
-        return store.getTemp((int) (long) (Long) id);
+        return store.getTemp(i(id));
     }
 
     private int eid(Object id) {
-        int x = (int) (long) (Long) id;
+        int x = i(id);
         if (!store.defined(x)) throw new KernelException("undefined expr id " + id);
         return x;
     }
@@ -61,13 +61,13 @@ public final class ExportReader {
     Level levelAt(int id) { return levels[id]; }
 
     private int nid(Object id) {
-        int x = (int) (long) (Long) id;
+        int x = i(id);
         if (x >= names.length || names[x] == null) throw new KernelException("undefined name id " + id);
         return x;
     }
 
     private int lid(Object id) {
-        int x = (int) (long) (Long) id;
+        int x = i(id);
         if (x >= levels.length || levels[x] == null) throw new KernelException("undefined level id " + id);
         return x;
     }
@@ -78,11 +78,23 @@ public final class ExportReader {
         return out;
     }
 
-    private static int i(Object o) { return (int) (long) (Long) o; }
+    /**
+     * A count, index or id as an int. A value that does not fit is refused, never truncated: read modulo 2^32,
+     * a projection index of 2^32 would be index 0 and a parameter count of 2^32 would be none (lean4#16279).
+     */
+    private static int i(Object o) {
+        if (!(o instanceof Long)) throw new KernelException("an integer was expected, found " + o);
+        long v = (Long) o;
+        if (v < 0 || v > Integer.MAX_VALUE) throw new KernelException("count or index out of range: " + v);
+        return (int) v;
+    }
     private static boolean b(Object o) { return o != null && (Boolean) o; }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> m(Object o) { return (Map<String, Object>) o; }
+
+    /** Called once the metadata record has been read, before any declaration is handed to the sink. */
+    public Runnable onMeta;
 
     public void read(BufferedReader in, Consumer<Object> sink) throws IOException {
         String line;
@@ -110,6 +122,7 @@ public final class ExportReader {
             formatVersion = String.valueOf(m(meta.get("format")).get("version"));
             leanVersion = String.valueOf(m(meta.get("lean")).get("version"));
             if (!formatVersion.startsWith("3.")) throw new KernelException("unsupported export format version " + formatVersion + " (this checker reads 3.x)");
+            if (onMeta != null) onMeta.run();
         } else if (o.containsKey("in")) {
             int id = i(o.get("in"));
             names = grow(names, id);

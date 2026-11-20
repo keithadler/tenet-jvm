@@ -1,6 +1,28 @@
 # Status
 
-Version 0.1.4, 24 October 2026. Checked against Lean 4.35.0 (Init, 59,349 constants, all verified); no code change from 0.1.3.
+Version 0.1.5, 19 November 2026: checked against Lean 4.36.0 and 4.37.0-rc1, with code changes. (0.1.4, 24 October 2026,
+was checked against Lean 4.35.0 with no code change from 0.1.3.)
+
+| Library | Lean 4.36.0 | Lean 4.37.0-rc1 |
+|---|---|---|
+| `Init` | 59,979 constants, 605 inductive groups | 62,454 constants, 613 groups |
+| `Lean` (includes `Init` and `Std`) | 175,539 constants, 2,954 groups, 4.2 GB peak | 184,136 constants, 3,118 groups, 4.3 GB peak |
+
+All verified, nothing taken on trust, JDK 26. The machine was busy with other checkers, so these runs give no
+usable times. The Lean Kernel Arena's published suite as of that day: 225 of 225 decided correctly (90 rejected,
+135 accepted); `magma-list-deep-n36` and `unfold-before-literal-fallback` needed more than 300 s on the loaded
+machine, and gave the right verdict when run alone (1,419 s and 107 s). What changed in the code:
+
+- Lean 4.37's three changes to definitional equality (proof irrelevance first, eta for the major premise of a
+  subsingleton structure's recursor and no reduction of a proof standing there, structure eta against a partially
+  applied constructor) are implemented and apply to exports written by Lean 4.37.0-rc1 or later. Earlier exports
+  keep the earlier rules. See [divergences](divergences.md#rules-that-depend-on-the-lean-version).
+- Lean 4.37's `Init` did not finish before one fix: `Nat` literal arithmetic refused any term mentioning a free
+  variable, which the reference does not, and `Nat.trailingZeros_rec_eq_bits` then compared two copies of 2^64
+  one successor at a time.
+- Counts and indices beyond 32 bits are refused instead of truncated, and a loose bound variable in an inductive
+  declaration is refused up front. Before, the first was accepted (read modulo 2^32) and the second got past the
+  closedness check; neither occurs in a real export.
 
 ## Verified against real exports (everything accepted, nothing taken on trust)
 
@@ -60,10 +82,14 @@ over `tutorial`, `bugs`, `corner-cases`, `other` and `perf`. See [arena](arena.m
   structure eta on a recursor's major premise *before* reducing it, a change the official kernel is
   considering (lean4#14977). tenet-jvm, like the official kernel today, reduces first and does not terminate.
   The tests allow either answer, so these count as declined, not wrong.
+  Lean 4.37.0-rc1 has made that change ([lean4#15371](https://github.com/leanprover/lean4/pull/15371)) and
+  tenet-jvm now applies it to exports written by 4.37 or later. The two tests have not been re-run: they are not
+  in the arena's published test archive, which carries decided tests only, and they are exported by the
+  arena's pinned Lean, so under an earlier version stamp they would still be reduced first.
 - **No dependency report**: the kernel lists the axioms an export declares but does not say which theorem
   depends on which (in particular, which depend on `sorryAx`).
 - **No per-declaration time or memory limit.**
 - **Native evaluation** (`Lean.reduceBool`) is not supported; see [divergences](divergences.md).
-- **Export formats other than 3.x**, and Lean versions other than 4.34 and 4.35, have not been tried.
+- **Export formats other than 3.x**, and Lean versions other than 4.34 to 4.37, have not been tried.
 - **Performance**: single-threaded. A cache-friendlier term representation and parallel checking of
   independent declarations are the obvious next steps.

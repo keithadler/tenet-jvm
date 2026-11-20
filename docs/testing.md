@@ -52,13 +52,25 @@ test. All three came from the same two causes, a syntactic zero test on universe
 
 ## 3. Mutation tests
 
-`tests/negative.py` takes a valid export, damages it in one targeted way, and requires a rejection. Sixteen
+`tests/negative.py` takes a valid export, damages it in one targeted way, and requires a rejection. Nineteen
 mutants: a theorem given the wrong proof, a definition given the wrong type, an undeclared universe, swapped
 recursor rules, a wrong field count in a rule, a recursor given another type's type, flipped `k`, `isRec`,
 `numParams`, `numIndices`, `numNested` flags, a constructor dropped from its type, a wrong `cidx`, a wrong
-`numFields`, and an extra orphan recursor. It also feeds six things that are not exports (an empty file, blank
+`numFields`, an extra orphan recursor, a constructor field in too large a universe, and the two 32-bit
+wraps described below. It also feeds six things that are not exports (an empty file, blank
 lines, a file with no metadata record, an unsupported format version, garbage, a file cut in half) and
 requires that none is accepted, and checks that the unmodified export is accepted.
+
+Since November 2026 it also covers the rules that depend on the Lean version (see
+[divergences](divergences.md#rules-that-depend-on-the-lean-version)). `tests/exports/eta437.ndjson` was exported
+by Lean 4.37.0-rc1 and holds two theorems only the 4.37 rules accept; `tests/exports/acc436.ndjson` was exported
+by Lean 4.36.0 and holds one only the earlier rules accept; `tests/exports/partial_constructor_eta.ndjson` adds a
+false theorem (`f = Box.mk` for an arbitrary `f`, proved by `rfl`) that no version may accept. Each file is run
+as written and again with its metadata claiming the other version, and the exact set of rejected declarations is
+compared. Lean's own kernel, 4.36.0 and 4.37.0-rc1, gives the same sets on the same files; the Lean sources and
+the script that assembles the false theorem are in `tests/exports/src`. Two further mutants add 2^32 to a
+parameter count and to a projection index, and a hand-written inductive type with a loose bound variable in a
+constructor field must be rejected for that reason and no other.
 
 ```sh
 make test

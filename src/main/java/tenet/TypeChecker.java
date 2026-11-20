@@ -391,10 +391,13 @@ public final class TypeChecker {
             Expr m2 = toCtorWhenK(rec, major);
             if (m2 != null) major = m2;
         }
-        major = cheapRec ? whnfCore(major, cheapRec, cheapProj) : whnf(major);
+        // Lean 4.37 (lean4#15371) leaves a proof alone: reducing one can fail to terminate, and whatever a recursor
+        // needs from it is supplied by rule K above or by eta below.
+        if (!env.eta437 || !isPropType(infer(major, true)))
+            major = cheapRec ? whnfCore(major, cheapRec, cheapProj) : whnf(major);
         if (major.kind == Expr.Kind.NAT) major = natLitToCtor(((Expr.NatLit) major).val);
         else if (major.kind == Expr.Kind.STR) major = whnf(strLitToCtor(((Expr.StrLit) major).val));
-        else major = toCtorWhenStructure(majorInduct(rec), major);
+        else major = toCtorWhenStructure(rec, major);
         Expr mfn = major.getAppFn();
         if (mfn.kind != Expr.Kind.CONST) return null;
         Decl.RecRule rule = null;
@@ -432,14 +435,23 @@ public final class TypeChecker {
         return ind.ctors.size() == 1 && ind.numIndices == 0 && !ind.isRec;
     }
 
-    private Expr toCtorWhenStructure(Name induct, Expr e) {
+    private Expr toCtorWhenStructure(Decl.Recursor rec, Expr e) {
+        Name induct = majorInduct(rec);
         if (!isStructureLike(induct)) return e;
         Expr f = e.getAppFn();
         if (f.kind == Expr.Kind.CONST && env.get(((Expr.Const) f).name) instanceof Decl.Ctor) return e;
         Expr eType = whnf(infer(e, true));
         Expr I = eType.getAppFn();
         if (!I.isConstOf(induct)) return e;
-        if (isPropType(eType)) return e;
+        if (env.eta437) {
+            // Lean 4.37 (lean4#15371): no eta for a proposition that is not a subsingleton, and the test for that is
+            // whether the recursor eliminates into every sort, read off as one more universe parameter than the
+            // first inductive type of its block has. The major's own type would not do: an auxiliary recursor of a
+            // nested inductive has a major of another type.
+            Decl first = rec.all.isEmpty() ? null : env.get(rec.all.get(0));
+            if (first == null) throw new KernelException("unknown inductive type in the block of recursor " + rec.name);
+            if (rec.levelParams.size() == first.levelParams.size()) return e;
+        } else if (isPropType(eType)) return e;
         return expandEtaStruct(eType, e);
     }
 
@@ -575,8 +587,14 @@ public final class TypeChecker {
         return null;
     }
 
+    /**
+     * Arithmetic on literals. There is no free-variable test here, as there is none in the reference: an argument
+     * may mention a variable and still reduce to a literal, and refusing it sends the comparison through the
+     * unary definition instead (2^64 steps of Nat.beq on a term from Init in Lean 4.37). The test belongs to the
+     * caller in lazyDeltaReduction, where it is a heuristic about what to try first.
+     */
     private Expr reduceNat(Expr e) {
-        if (e.hasFVar || e.kind != Expr.Kind.APP) return null;
+        if (e.kind != Expr.Kind.APP) return null;
         Expr f = e.getAppFn();
         if (f.kind != Expr.Kind.CONST) return null;
         Name n = ((Expr.Const) f).name;
@@ -670,6 +688,14 @@ public final class TypeChecker {
 
         if (!t.hasFVar && s.isConstOf(Names.BOOL_TRUE) && whnf(t).isConstOf(Names.BOOL_TRUE)) return true;
 
+        // Lean 4.37 (lean4#15103) asks about proof irrelevance before normalizing either side, so that a proof is
+        // never reduced here; earlier kernels ask after.
+        boolean irrelFirst = env.eta437;
+        if (irrelFirst) {
+            r = proofIrrel(t, s);
+            if (r != UNDEF) return r == TRUE;
+        }
+
         Expr tn = whnfCore(t, false, true);
         Expr sn = whnfCore(s, false, true);
         if (!tn.equals(t) || !sn.equals(s)) {
@@ -677,8 +703,10 @@ public final class TypeChecker {
             if (r != UNDEF) return r == TRUE;
         }
 
-        r = proofIrrel(tn, sn);
-        if (r != UNDEF) return r == TRUE;
+        if (!irrelFirst) {
+            r = proofIrrel(tn, sn);
+            if (r != UNDEF) return r == TRUE;
+        }
 
         Expr[] ts = {tn, sn};
         r = lazyDeltaReduction(ts);
@@ -750,10 +778,27 @@ public final class TypeChecker {
         Decl d = env.get(((Expr.Const) f).name);
         if (!(d instanceof Decl.Ctor)) return false;
         Decl.Ctor ctor = (Decl.Ctor) d;
-        List<Expr> args = s.getAppArgs();
-        if (args.size() != ctor.numParams + ctor.numFields) return false;
+        int numCtorArgs = ctor.numParams + ctor.numFields;
+        int given = s.getAppNumArgs();
+        if (env.eta437 ? given > numCtorArgs : given != numCtorArgs) return false;
         if (!isStructureLike(ctor.induct)) return false;
-        if (!isDefEq(infer(t, true), infer(s, true))) return false;
+        Expr tType = infer(t, true);
+        Expr sType = infer(s, true);
+        if (!isDefEq(tType, sType)) return false;
+        if (given < numCtorArgs) {
+            // Lean 4.37 (lean4#15373): a partially applied constructor is a function, so compare both sides applied
+            // to fresh variables for the missing fields. The type of a constructor application is a Pi telescope as
+            // written, so no normalization is needed to walk it.
+            while (sType.kind == Expr.Kind.PI) {
+                Expr.Binder pi = (Expr.Binder) sType;
+                Expr x = mkLocal(pi.name, pi.type, pi.info);
+                t = Expr.app(t, x);
+                s = Expr.app(s, x);
+                sType = Expr.instantiate1(pi.body, x);
+            }
+            if (s.getAppNumArgs() != numCtorArgs) return false;
+        }
+        List<Expr> args = s.getAppArgs();
         for (int i = ctor.numParams; i < args.size(); i++) {
             Expr proj = Expr.proj(ctor.induct, i - ctor.numParams, t);
             if (!isDefEq(proj, args.get(i))) return false;

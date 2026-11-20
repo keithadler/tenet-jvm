@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Java 21](https://img.shields.io/badge/Java-21%2B-orange.svg)
-![Lean 4.34 – 4.35](https://img.shields.io/badge/Lean-4.34%20%E2%80%93%204.35-8a2be2.svg)
+![Lean 4.34 – 4.37](https://img.shields.io/badge/Lean-4.34%20%E2%80%93%204.37-8a2be2.svg)
 
 **An independent kernel for [Lean 4](https://lean-lang.org), written in Java, with no dependencies.**
 It reads the NDJSON that [`lean4export`](https://github.com/leanprover/lean4export) writes and re-checks every
@@ -16,7 +16,7 @@ them at once, and it is maintained alongside Tenet and the rest of the Lean veri
 
 ## Status
 
-Version 0.1.4. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
+Version 0.1.5. It checks the Lean libraries it has been given, including all of Mathlib, and it passes every decided test of the
 [Lean Kernel Arena](https://arena.lean-lang.org/) groups that have been run. [`docs/status.md`](docs/status.md) is the current account; [`docs/testing.md`](docs/testing.md)
 says exactly what was run.
 
@@ -54,13 +54,19 @@ bin/tenet-jvm ../init.ndjson
 | | `cedar`: 148,832 constants, 1,921 groups | all verified, ≈ 45 s |
 | | `cslib`: 394,284 constants, 4,022 groups | all verified, ≈ 348 s |
 | Lean Kernel Arena | `tutorial`, `bugs`, `corner-cases`, `other`, `perf` (223 tests) | 197 decided tests right (and 24 where either answer is allowed), **0 wrongly accepted, 0 wrongly rejected**, 2 timed out (the two `eta-struct-major-*-no-whnf` corner cases, on which the official kernel does not terminate either) |
-| Mutation tests | 17 targeted corruptions of a valid export, 6 inputs that are not exports, 1 export that must be accepted | all as intended |
+| Mutation tests | 19 targeted corruptions of a valid export, 6 inputs that are not exports, 1 export that must be accepted, 8 checks of the rules that depend on the Lean version and of closed inductive types | all as intended |
 | | `Mathlib` (Lean 4.34.1 export, 718,577 constants, 6,798 groups) | all verified, 14–19 min over three runs on the laptop (10 GB peak), 30.1 min on the arena's own runner |
 | | `navier-stokes-euler` (129,845 constants, 1,614 groups; built and checked in GitHub Actions, since its Lean 4.34.0-rc2 `lake` crashes on the author's macOS) | all verified on 0.1.3, ≈ 421 s, 5.3 GB peak. Version 0.1.2 wrongly rejected one structure here (`CopyPotential`, a universe-level comparison bug found by the arena, fixed in 0.1.3 and now a test) |
 
 Lean 4.35.0-rc4 exports for the Lean libraries, the arena's 4.34.1 exports for the projects and Mathlib; JDK 21, an
 Apple-silicon laptop that was not idle. All rows re-run on v0.1.2 and v0.1.3 on 12 October 2026. Times are indicative. `Init` from Lean 4.35.0 (released
 12 October) was checked again on 23 October: 59,349 constants, all verified, 28.7 s.
+
+Lean 4.36.0 and 4.37.0-rc1 were checked on 19 November 2026, all verified: `Init` 59,979 constants (605 groups) and
+62,454 (613); `Lean` 175,539 (2,954) and 184,136 (3,118), peak footprint 4.2 and 4.3 GB. JDK 26. Lean 4.37 changed
+three rules of definitional equality, and which set applies is read from the export; see
+[divergences](docs/divergences.md#rules-that-depend-on-the-lean-version). No times are given for these runs:
+the machine was busy with other checkers throughout.
 
 ## Install
 
@@ -177,7 +183,7 @@ Issues and pull requests are welcome, especially:
   with the reference kernel is a bug to be investigated, whichever side turns out to be wrong;
 - **tests**, particularly for `tests/negative.py` (one more way to corrupt an export) and corner cases for
   the arena;
-- results on libraries that have not been tried, and Lean versions other than 4.34 and 4.35.
+- results on libraries that have not been tried, and Lean versions other than 4.34 to 4.37.
 
 Please keep code and documentation consistent with the rule at the top of
 [`docs/design.md`](docs/design.md): the kernel derives, then compares.

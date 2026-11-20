@@ -138,9 +138,89 @@ def ind_field_universe_too_big(recs):
     recs[blk_i:blk_i] = new
 
 
-MUTANTS = [ind_field_universe_too_big, thm_wrong_value, thm_undeclared_universe, def_wrong_type, rec_rules_swapped, rec_rule_field_count, rec_wrong_type,
+def ind_num_params_wraps_32_bits(recs):
+    # numParams + 2^32 everywhere in one block: read modulo 2^32 this is the unmodified, valid block (lean4#16279)
+    blk = inductive(recs, 1)
+    for part in ("types", "ctors", "recs"):
+        for d in blk[part]:
+            d["numParams"] += 2 ** 32
+
+def proj_index_wraps_32_bits(recs):
+    # a projection index of idx + 2^32: read modulo 2^32 it is the valid projection it was
+    for r in recs:
+        if "proj" in r:
+            r["proj"]["idx"] += 2 ** 32
+            return
+    raise SystemExit("no projection in the source export")
+
+
+MUTANTS = [ind_num_params_wraps_32_bits, proj_index_wraps_32_bits, ind_field_universe_too_big, thm_wrong_value, thm_undeclared_universe, def_wrong_type, rec_rules_swapped, rec_rule_field_count, rec_wrong_type,
            rec_k_flag_flipped, rec_k_flag_on_nat, ind_isrec_flipped, ind_num_params, ind_num_indices, ind_num_nested,
            ind_ctor_dropped_from_type, ctor_cidx, ctor_field_count, rec_extra_orphan]
+
+
+def run_file(path):
+    p = subprocess.run([LAUNCHER, "--keep-going", path], capture_output=True, text=True, timeout=120)
+    rejected = sorted(l.split(":")[0].split()[-1] for l in p.stdout.splitlines() if l.startswith("REJECTED"))
+    return p.returncode, rejected, p.stdout
+
+
+def as_version(name, old, new):
+    """A copy of an export whose metadata claims another Lean version; returns its path."""
+    text = open(os.path.join(HERE, "exports", name)).read()
+    stamp = '"version":"%s"}}}' % old
+    assert text.count(stamp) == 1, f"{name}: expected one Lean version stamp {old}"
+    f = tempfile.NamedTemporaryFile("w", suffix=".ndjson", delete=False)
+    f.write(text.replace(stamp, '"version":"%s"}}}' % new))
+    f.close()
+    return f.name
+
+
+# Which rules apply depends on the Lean that wrote the export (Lean 4.37 changed three; see docs/divergences.md).
+# Each row: export, the version it is presented as (None: as written), the declarations that must be rejected.
+# Lean's own kernel, 4.36.0 and 4.37.0-rc1, gives these verdicts on the same files.
+VERSIONED = [
+    ("eta437.ndjson", None, []),
+    ("eta437.ndjson", ("4.37.0-rc1", "4.36.0"), ["Eta437.andMajor", "Eta437.partialCtor"]),
+    ("acc436.ndjson", None, []),
+    ("acc436.ndjson", ("4.36.0", "4.37.0"), ["Acc436.accReduces"]),
+    ("partial_constructor_eta.ndjson", None, ["Eta437.boxEta"]),
+    ("partial_constructor_eta.ndjson", ("4.37.0-rc1", "4.36.0"), ["Eta437.andMajor", "Eta437.boxEta", "Eta437.partialCtor"]),
+]
+
+VERSIONS = {
+    "4.37.0-rc1": True, "4.37.0": True, "v4.37.1": True, "4.38.0-rc1": True, "5.0.0": True,
+    "4.37.0-nightly-2026-10-21": True, "4.38.0-nightly-2026-11-20": True,
+    "4.37.0-nightly-2026-10-20": False, "4.36.0": False, "4.36.0-rc2": False, "4.35.0": False, "4.12.0": False,
+    "n/a": False, "garbage": False, "": False,
+}
+
+
+def version_checks():
+    bad = 0
+    for name, ver, expect in VERSIONED:
+        path = as_version(name, *ver) if ver else os.path.join(HERE, "exports", name)
+        try:
+            code, rejected, _ = run_file(path)
+        finally:
+            if ver:
+                os.unlink(path)
+        good = rejected == sorted(expect) and code == (1 if expect else 0)
+        shown = f"as Lean {ver[1]}" if ver else "as written"
+        print(f"{'ok' if good else 'WRONG':8} {name} {shown}: rejected {rejected or 'nothing'}")
+        bad += not good
+    java = os.environ.get("JAVA", "java")
+    out = subprocess.run([java, "-cp", os.path.join(ROOT, "out"), "tenet.LeanVersion", *VERSIONS], capture_output=True, text=True).stdout.split()
+    good = out == [str(v).lower() for v in VERSIONS.values()]
+    print(f"{'ok' if good else 'WRONG':8} LeanVersion.kernelHasEta437 on {len(VERSIONS)} version strings")
+    bad += not good
+    # An inductive whose constructor has a loose bound variable; the reason matters, since the file has no recursors
+    # and would be rejected for that alone.
+    code, _, out = run_file(os.path.join(HERE, "exports", "loose_bvar_inductive.ndjson"))
+    good = code == 1 and "constructor type has free variables: T.mk" in out
+    print(f"{'ok' if good else 'WRONG':8} loose_bvar_inductive.ndjson is rejected for the loose bound variable")
+    bad += not good
+    return bad
 
 
 def run(recs):
@@ -210,7 +290,8 @@ def main():
         print(f"{verdict:8} {m.__name__:30} {reason}")
         bad += code != 1
     bad += input_checks()
-    print(f"\n{len(MUTANTS)} mutants, {len(POSITIVE)} must-accept exports and 6 malformed inputs, {bad} problem(s)")
+    bad += version_checks()
+    print(f"\n{len(MUTANTS)} mutants, {len(POSITIVE)} must-accept exports, 6 malformed inputs and {len(VERSIONED) + 2} version and closedness checks, {bad} problem(s)")
     sys.exit(1 if bad else 0)
 
 

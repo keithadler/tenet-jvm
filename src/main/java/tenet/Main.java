@@ -11,7 +11,7 @@ import java.util.Map;
 
 /** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
-    static final String VERSION = "0.1.4";
+    static final String VERSION = "0.1.5";
     private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
 
     public static void main(String[] args) throws Exception {
@@ -52,6 +52,8 @@ public final class Main {
         long start = System.nanoTime();
         Kernel kernel = new Kernel();
         ExportReader reader = new ExportReader();
+        // Which rules apply depends on the Lean that wrote the export; see LeanVersion.
+        reader.onMeta = () -> kernel.env.eta437 = LeanVersion.kernelHasEta437(reader.leanVersion);
         Map<Decl.Kind, Integer> counts = new EnumMap<>(Decl.Kind.class);
         int[] failures = {0};
         int[] blocks = {0};

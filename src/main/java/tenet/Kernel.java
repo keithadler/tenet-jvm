@@ -160,6 +160,13 @@ public final class Kernel {
         // 1. the declaration proper, as the kernel would receive it
         Decl.Inductive first = b.types.get(0);
         List<IndSpec.Type> stypes = new ArrayList<>();
+        // A type or constructor type must be closed, and this has to be asked before anything walks a telescope:
+        // instantiating the parameters turns a loose bound variable in a constructor field into something that
+        // looks bound. Lean checks it up front since 4.37 (lean4#16512); no well-formed export of any version has one.
+        for (Decl.Inductive t : b.types)
+            if (t.type.hasFVar || t.type.looseBVarRange > 0) throw new KernelException("inductive type has free variables: " + t.name);
+        for (Decl.Ctor c : b.ctors)
+            if (c.type.hasFVar || c.type.looseBVarRange > 0) throw new KernelException("constructor type has free variables: " + c.name);
         for (Decl.Inductive t : b.types) {
             if (!t.levelParams.equals(first.levelParams)) throw new KernelException("mutual inductive types must have the same universe parameters");
             if (t.numParams != first.numParams) throw new KernelException("mutual inductive types must have the same number of parameters");

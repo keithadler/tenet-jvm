@@ -7,6 +7,12 @@ import java.util.Map;
 public final class Env {
     private final Map<Name, Decl> decls = new HashMap<>();
     public boolean quotInitialized = false;
+    /**
+     * The Lean that wrote these declarations has the 4.37 definitional-equality rules (see {@link LeanVersion#kernelHasEta437}):
+     * proof irrelevance before weak head normalization, no reduction of a proof standing as a recursor's major premise,
+     * eta for the major of a subsingleton structure's recursor, and structure eta against a partially applied constructor.
+     */
+    public boolean eta437 = false;
     private final Env parent;
 
     public Env() { this.parent = null; }
@@ -14,6 +20,7 @@ public final class Env {
     private Env(Env parent) {
         this.parent = parent;
         this.quotInitialized = parent.quotInitialized;
+        this.eta437 = parent.eta437;
     }
 
     /** A scratch environment layered over this one; additions to it do not touch this environment. */
