@@ -142,7 +142,7 @@ public final class TypeChecker {
             for (Level l : c.levels) checkLevel(l);
             if (rank(d) > safetyRank) throw new KernelException("invalid declaration, it uses " + (rank(d) == 2 ? "unsafe" : "partial") + " declaration " + c.name);
         }
-        return Expr.instantiateLevelParams(d.type, d.levelParams, c.levels);
+        return Expr.instantiateLevelParams(d.type(), d.levelParams, c.levels);
     }
 
     static int rank(Decl d) {
@@ -242,7 +242,7 @@ public final class TypeChecker {
         Decl cd = env.get(ind.ctors.get(0));
         if (!(cd instanceof Decl.Ctor)) throw new KernelException("invalid projection, unknown constructor " + ind.ctors.get(0));
         Decl.Ctor ctor = (Decl.Ctor) cd;
-        Expr ct = Expr.instantiateLevelParams(ctor.type, ctor.levelParams, ic.levels);
+        Expr ct = Expr.instantiateLevelParams(ctor.type(), ctor.levelParams, ic.levels);
         for (Expr a : args) {
             ct = whnf(ct);
             if (ct.kind != Expr.Kind.PI) throw new KernelException("invalid projection, ill-formed constructor type");
@@ -375,7 +375,7 @@ public final class TypeChecker {
 
     /** Name of the inductive type the recursor eliminates (the head of the major premise's type). */
     static Name majorInduct(Decl.Recursor rec) {
-        Expr t = rec.type;
+        Expr t = rec.type();
         int n = rec.majorIdx();
         for (int i = 0; i < n; i++) t = ((Expr.Binder) t).body;
         t = ((Expr.Binder) t).type;
@@ -406,7 +406,7 @@ public final class TypeChecker {
         List<Expr> margs = major.getAppArgs();
         if (rule.nfields > margs.size()) return null;
         if (rc.levels.size() != rec.levelParams.size()) return null;
-        Expr rhs = Expr.instantiateLevelParams(rule.rhs, rec.levelParams, rc.levels);
+        Expr rhs = Expr.instantiateLevelParams(rule.rhs(), rec.levelParams, rc.levels);
         rhs = Expr.apps(rhs, args.subList(0, rec.numParams + rec.numMotives + rec.numMinors));
         rhs = Expr.apps(rhs, margs.subList(margs.size() - rule.nfields, margs.size()));
         if (args.size() > majorIdx + 1) rhs = Expr.apps(rhs, args.subList(majorIdx + 1, args.size()));

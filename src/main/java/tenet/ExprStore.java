@@ -6,83 +6,131 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The expressions of an export, kept as flat arrays instead of objects: about 17 bytes per node, against
- * roughly 45 for an {@link Expr}. An export refers back to earlier expressions by id for as long as it
- * likes, so a reader has to remember all of them; as objects that is the whole export held in memory
- * (over 12 GB for Mathlib). Here an expression becomes an object only while a declaration that uses it is
- * being read and checked.
+ * The expressions of an export, kept as flat primitive arrays indexed by the export's own ids instead of as
+ * objects. An export refers back to earlier expressions by id for as long as it likes, so a reader has to
+ * remember all of them; as objects that is the whole export held in memory. Here a node costs about 10.6
+ * bytes on average (a kind byte and two ints, plus two or three more ints in a side table for the binders,
+ * lets, projections and constants that need them), and an expression becomes an object only while a
+ * declaration that uses it is being checked.
+ *
+ * <p>The arrays are kept in chunks of 2^20 entries, so the store grows by allocating one more chunk, never by
+ * copying everything into an array twice as big, and is not limited to the 2^30 ids a doubling int array
+ * would reach.
+ *
+ * <p>Objects built from the store for declaration types and bodies are memoised by id in {@link #kept} so that
+ * a declaration sees one shared object per node. That memo is a cache, not the store: once it holds more than
+ * {@link #KEEP_LIMIT} nodes it is dropped between two declarations and refilled on demand. Nothing in the
+ * environment holds on to these objects (a declaration holds ids, see {@link Term}), so dropping it frees them.
  */
 final class ExprStore {
-    static final byte BVAR = 1, SORT = 2, CONST = 3, APP = 4, LAM = 5, PI = 6, LET = 7, NAT = 8, STR = 9, PROJ = 10, ALIAS = 11;
+    static final byte BVAR = 1, SORT = 2, CONST = 3, APP = 4, LET = 5, NAT = 6, STR = 7, PROJ = 8, ALIAS = 9;
+    /** LAM + binder info code (0..3) and PI + binder info code. */
+    static final byte LAM = 16, PI = 24;
 
     private static final String[] BINDER_INFO = {"default", "implicit", "strictImplicit", "instImplicit"};
 
-    private byte[] kind = new byte[1 << 16];
-    private int[] a = new int[1 << 16], b = new int[1 << 16], c = new int[1 << 16], d = new int[1 << 16];
+    private static final int BITS = 20, CHUNK = 1 << BITS, MASK = CHUNK - 1;
+
+    /** Kept-memo size (in nodes) above which it is dropped between declarations. */
+    static final int KEEP_LIMIT = Integer.getInteger("tenet.keep", 1 << 21);
+
+    private byte[][] kind = new byte[16][];
+    private int[][] a = new int[16][], b = new int[16][];
     private int size = 0;
-    private final List<int[]> levelLists = new ArrayList<>();
+    /** Extra fields: [type, body] for binders, [type, value, body] for let, [idx, struct] for proj, [n, l1..ln] for const. */
+    private final IntList extra = new IntList();
     private final List<Object> literals = new ArrayList<>();
     private final ExportReader reader;
 
     ExprStore(ExportReader reader) {
         this.reader = reader;
-        levelLists.add(new int[0]);
     }
 
-    private void ensure(int id) {
-        if (id < kind.length) return;
-        int n = kind.length;
-        while (n <= id) n *= 2;
-        kind = Arrays.copyOf(kind, n);
-        a = Arrays.copyOf(a, n);
-        b = Arrays.copyOf(b, n);
-        c = Arrays.copyOf(c, n);
-        d = Arrays.copyOf(d, n);
-    }
-
-    private void put(int id, byte k, int x, int y, int z, int w) {
-        ensure(id);
-        kind[id] = k;
-        a[id] = x;
-        b[id] = y;
-        c[id] = z;
-        d[id] = w;
+    private void put(int id, byte k, int x, int y) {
+        int c = id >>> BITS;
+        if (c >= kind.length) {
+            int n = Math.max(kind.length * 2, c + 1);
+            kind = Arrays.copyOf(kind, n);
+            a = Arrays.copyOf(a, n);
+            b = Arrays.copyOf(b, n);
+        }
+        if (kind[c] == null) {
+            kind[c] = new byte[CHUNK];
+            a[c] = new int[CHUNK];
+            b[c] = new int[CHUNK];
+        }
+        int o = id & MASK;
+        kind[c][o] = k;
+        a[c][o] = x;
+        b[c][o] = y;
         if (id >= size) size = id + 1;
     }
 
-    boolean defined(int id) { return id >= 0 && id < size && kind[id] != 0; }
+    private byte kindAt(int id) { return kind[id >>> BITS][id & MASK]; }
+    private int aAt(int id) { return a[id >>> BITS][id & MASK]; }
+    private int bAt(int id) { return b[id >>> BITS][id & MASK]; }
+
+    boolean defined(int id) {
+        if (id < 0 || id >= size) return false;
+        byte[] k = kind[id >>> BITS];
+        return k != null && k[id & MASK] != 0;
+    }
 
     static int infoCode(String info) {
         for (int i = 0; i < BINDER_INFO.length; i++) if (BINDER_INFO[i].equals(info)) return i;
         return 0;
     }
 
-    void bvar(int id, int idx) { put(id, BVAR, idx, 0, 0, 0); }
-    void sort(int id, int level) { put(id, SORT, level, 0, 0, 0); }
+    void bvar(int id, int idx) { put(id, BVAR, idx, 0); }
+    void sort(int id, int level) { put(id, SORT, level, 0); }
     void cnst(int id, int name, int[] levels) {
-        int ll = 0;
-        if (levels.length > 0) { ll = levelLists.size(); levelLists.add(levels); }
-        put(id, CONST, name, ll, 0, 0);
+        int off = -1;
+        if (levels.length > 0) {
+            off = extra.add(levels.length);
+            for (int l : levels) extra.add(l);
+        }
+        put(id, CONST, name, off);
     }
-    void app(int id, int fn, int arg) { put(id, APP, fn, arg, 0, 0); }
-    void binder(int id, boolean pi, int name, int type, int body, String info) { put(id, pi ? PI : LAM, name, type, body, infoCode(info)); }
+    void app(int id, int fn, int arg) { put(id, APP, fn, arg); }
+    void binder(int id, boolean pi, int name, int type, int body, String info) {
+        int off = extra.add(type);
+        extra.add(body);
+        put(id, (byte) ((pi ? PI : LAM) + infoCode(info)), name, off);
+    }
     void let(int id, int name, int type, int value, int body) {
-        // four references: keep them in a, b, c and the body in d
-        put(id, LET, name, type, value, body);
+        int off = extra.add(type);
+        extra.add(value);
+        extra.add(body);
+        put(id, LET, name, off);
     }
-    void nat(int id, BigInteger v) { literals.add(v); put(id, NAT, literals.size() - 1, 0, 0, 0); }
-    void str(int id, String v) { literals.add(v); put(id, STR, literals.size() - 1, 0, 0, 0); }
-    void proj(int id, int typeName, int idx, int struct) { put(id, PROJ, typeName, idx, struct, 0); }
-    void alias(int id, int target) { put(id, ALIAS, target, 0, 0, 0); }
+    void nat(int id, BigInteger v) { literals.add(v); put(id, NAT, literals.size() - 1, 0); }
+    void str(int id, String v) { literals.add(v); put(id, STR, literals.size() - 1, 0); }
+    void proj(int id, int typeName, int idx, int struct) {
+        int off = extra.add(idx);
+        extra.add(struct);
+        put(id, PROJ, typeName, off);
+    }
+    void alias(int id, int target) { put(id, ALIAS, target, 0); }
+
+    /** Number of expression ids in use (one more than the largest). */
+    int size() { return size; }
+
+    /** Bytes held by the primitive arrays, for diagnostics. */
+    long footprint() {
+        long n = 0;
+        for (byte[] k : kind) if (k != null) n += CHUNK * 9L;
+        return n + extra.footprint();
+    }
 
     // ---- materialisation ---------------------------------------------------
 
-    /** A small open-addressing map from node id to the object built for it, for one declaration. */
+    /** A small open-addressing map from node id to the object built for it. */
     static final class Memo {
         private int[] keys = new int[256];
         private Expr[] vals = new Expr[256];
         private int count = 0;
         Memo() { Arrays.fill(keys, -1); }
+        int size() { return count; }
         Expr get(int k) {
             int mask = keys.length - 1;
             for (int i = (k * 0x9E3779B1) >>> 7 & mask; keys[i] != -1; i = (i + 1) & mask) if (keys[i] == k) return vals[i];
@@ -98,6 +146,7 @@ final class ExprStore {
             vals[i] = v;
         }
         private void grow() {
+            if (keys.length >= 1 << 30) throw new KernelException("a single declaration has more than 2^29 distinct expression nodes");
             int[] ok = keys;
             Expr[] ov = vals;
             keys = new int[ok.length * 2];
@@ -109,10 +158,10 @@ final class ExprStore {
     }
 
     /**
-     * The expression with this id as an object. `kept` holds the nodes the environment keeps (types and
-     * definition bodies), shared by every declaration; `temp` is a scratch table for one proof term. Nodes
-     * found in `kept` are reused either way. Nodes built for a proof (temp != null) go into `temp` only, so
-     * they can be collected as soon as the declaration has been checked; all others go into `kept`.
+     * The expression with this id as an object. `kept` holds the nodes of declaration types and bodies, shared
+     * by every declaration until it is dropped; `temp` is a scratch table for one proof term. Nodes found in
+     * `kept` are reused either way. Nodes built for a proof (temp != null) go into `temp` only, so they can be
+     * collected as soon as the declaration has been checked; all others go into `kept`.
      */
     Expr get(int id, Memo kept, Memo temp) {
         if (!defined(id)) throw new KernelException("undefined expr id " + id);
@@ -120,42 +169,72 @@ final class ExprStore {
         if (hit == null && temp != null) hit = temp.get(id);
         if (hit != null) return hit;
         Expr r;
-        switch (kind[id]) {
-            case ALIAS: r = get(a[id], kept, temp); break;
-            case BVAR: r = Expr.bvar(a[id]); break;
-            case SORT: r = Expr.sort(reader.levelAt(a[id])); break;
+        byte k = kindAt(id);
+        int x = aAt(id), y = bAt(id);
+        switch (k) {
+            case ALIAS: r = get(x, kept, temp); break;
+            case BVAR: r = Expr.bvar(x); break;
+            case SORT: r = Expr.sort(reader.levelAt(x)); break;
             case CONST: {
-                int[] ls = levelLists.get(b[id]);
                 List<Level> levels;
-                if (ls.length == 0) levels = List.of();
+                if (y < 0) levels = List.of();
                 else {
-                    List<Level> l = new ArrayList<>(ls.length);
-                    for (int x : ls) l.add(reader.levelAt(x));
+                    int n = extra.get(y);
+                    List<Level> l = new ArrayList<>(n);
+                    for (int j = 1; j <= n; j++) l.add(reader.levelAt(extra.get(y + j)));
                     levels = l;
                 }
-                r = Expr.cnst(reader.nameAt(a[id]), levels);
+                r = Expr.cnst(reader.nameAt(x), levels);
                 break;
             }
-            case APP: r = Expr.app(get(a[id], kept, temp), get(b[id], kept, temp)); break;
-            case LAM: r = Expr.lam(reader.nameAt(a[id]), get(b[id], kept, temp), get(c[id], kept, temp), BINDER_INFO[d[id]]); break;
-            case PI: r = Expr.pi(reader.nameAt(a[id]), get(b[id], kept, temp), get(c[id], kept, temp), BINDER_INFO[d[id]]); break;
-            case LET: r = Expr.let(reader.nameAt(a[id]), get(b[id], kept, temp), get(c[id], kept, temp), get(d[id], kept, temp)); break;
-            case NAT: r = Expr.nat((BigInteger) literals.get(a[id])); break;
-            case STR: r = Expr.str((String) literals.get(a[id])); break;
-            case PROJ: r = Expr.proj(reader.nameAt(a[id]), b[id], get(c[id], kept, temp)); break;
-            default: throw new KernelException("corrupt expression store at id " + id);
+            case APP: r = Expr.app(get(x, kept, temp), get(y, kept, temp)); break;
+            case LET: r = Expr.let(reader.nameAt(x), get(extra.get(y), kept, temp), get(extra.get(y + 1), kept, temp), get(extra.get(y + 2), kept, temp)); break;
+            case NAT: r = Expr.nat((BigInteger) literals.get(x)); break;
+            case STR: r = Expr.str((String) literals.get(x)); break;
+            case PROJ: r = Expr.proj(reader.nameAt(x), extra.get(y), get(extra.get(y + 1), kept, temp)); break;
+            default: {
+                if (k >= LAM && k < LAM + 4) r = Expr.lam(reader.nameAt(x), get(extra.get(y), kept, temp), get(extra.get(y + 1), kept, temp), BINDER_INFO[k - LAM]);
+                else if (k >= PI && k < PI + 4) r = Expr.pi(reader.nameAt(x), get(extra.get(y), kept, temp), get(extra.get(y + 1), kept, temp), BINDER_INFO[k - PI]);
+                else throw new KernelException("corrupt expression store at id " + id);
+            }
         }
         (temp != null ? temp : kept).put(id, r);
         return r;
     }
 
+    private Memo kept = new Memo();
+
     /** A kept node (type, definition body, ...). */
-    Expr get(int id) { return get(id, keptMemo, null); }
+    Expr get(int id) { return get(id, kept, null); }
 
-    /** A proof term: built into scratch space, reusing kept nodes. */
-    Expr getTemp(int id) { return get(id, keptMemo, new Memo()); }
+    /** A proof term being checked: built into scratch space, reusing kept nodes. */
+    Expr getTemp(int id) { return get(id, kept, new Memo()); }
 
-    private final Memo keptMemo = new Memo();
+    /** Called between declarations: drops the memo of built objects once it has grown past {@link #KEEP_LIMIT}. */
+    void endDeclaration() {
+        if (kept.size() > KEEP_LIMIT) kept = new Memo();
+    }
 
-    Expr materialize(int id) { return getTemp(id); }
+    /** A growable int sequence kept in chunks; indices are ints, so it holds at most 2^31 - 1 values. */
+    static final class IntList {
+        private int[][] chunks = new int[16][];
+        private int size = 0;
+
+        int add(int v) {
+            if (size == Integer.MAX_VALUE) throw new KernelException("export too large: more than 2^31 auxiliary expression fields");
+            int c = size >>> BITS;
+            if (c >= chunks.length) chunks = Arrays.copyOf(chunks, chunks.length * 2);
+            if (chunks[c] == null) chunks[c] = new int[CHUNK];
+            chunks[c][size & MASK] = v;
+            return size++;
+        }
+
+        int get(int i) { return chunks[i >>> BITS][i & MASK]; }
+
+        long footprint() {
+            long n = 0;
+            for (int[] c : chunks) if (c != null) n += CHUNK * 4L;
+            return n;
+        }
+    }
 }

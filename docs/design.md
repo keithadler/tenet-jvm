@@ -21,6 +21,7 @@ export.ndjson ──► ExportReader ──► Decl / InductiveBlock ──► K
 |---|---|
 | `Name`, `Level`, `Expr` | The term language. Expressions are immutable, locally nameless (bound variables are de Bruijn indices, free variables are fresh `FVar`s), and carry their loose-bound-variable range, so closed subterms are skipped during substitution. |
 | `ExportReader`, `Json` | Streams `lean4export` NDJSON. Declarations are handed to the kernel one at a time, in file order; a file is never held in memory as a whole. |
+| `ExprStore`, `Term` | Every expression of the export, kept as chunked primitive arrays indexed by export id (a kind byte and two ints per node, plus a side table of ints for binders, lets, projections and constants: about 10.6 bytes a node). A declaration holds ids (`Term`), not objects; objects are built on demand into a memo that is dropped between declarations once it passes `-Dtenet.keep` nodes (default 2^21). So the heap is the store plus names plus the declaration being checked, not every type and body as objects. |
 | `Decl`, `Env` | Constants and the environment. `Env.fork()` gives a scratch layer used while an inductive group is being checked. |
 | `TypeChecker` | Inference, weak head normalisation, definitional equality. |
 | `InductiveChecker` | Validates an inductive declaration and *generates* its recursors. |

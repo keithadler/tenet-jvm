@@ -144,7 +144,7 @@ final class NestedInductive {
             Decl.Inductive J = (Decl.Inductive) jd;
             Expr JAs = Expr.apps(Expr.cnst(jName, fc.levels), args.subList(0, inp));
             Name auxJName = Name.str(Name.of("_nested"), jName + "_" + nextIdx++);
-            Expr auxJType = Expr.instantiateLevelParams(J.type, J.levelParams, fc.levels);
+            Expr auxJType = Expr.instantiateLevelParams(J.type(), J.levelParams, fc.levels);
             auxJType = instantiatePiParams(auxJType, inp, args);
             auxJType = tc.mkPi(As, auxJType);
             Expr jKey = Expr.instantiateRev(Expr.abstractFVars(JAs, ids(As)), mParams.toArray(new Expr[0]));
@@ -157,7 +157,7 @@ final class NestedInductive {
             for (Name jc : J.ctors) {
                 Decl cd = env.get(jc);
                 if (!(cd instanceof Decl.Ctor)) throw err("unknown constructor " + jc);
-                Expr ct = Expr.instantiateLevelParams(cd.type, cd.levelParams, fc.levels);
+                Expr ct = Expr.instantiateLevelParams(cd.type(), cd.levelParams, fc.levels);
                 ct = instantiatePiParams(ct, inp, args);
                 ct = tc.mkPi(As, ct);
                 auxCtors.add(new IndSpec.Ctor(replacePrefix(jc, jName, auxJName), ct));

@@ -24,7 +24,7 @@ public final class Kernel {
     private void checkType(Decl d) {
         checkLParams(d.levelParams);
         if (env.contains(d.name)) throw new KernelException("already declared: " + d.name);
-        Expr t = d.type;
+        Expr t = d.type();
         if (t.hasFVar || t.looseBVarRange > 0) throw new KernelException("declaration type has free variables: " + d.name);
         tc.ensureSort(tc.check(t), t);
     }
@@ -32,8 +32,8 @@ public final class Kernel {
     private void checkValue(Decl d, Expr value) {
         if (value.hasFVar || value.looseBVarRange > 0) throw new KernelException("declaration value has free variables: " + d.name);
         Expr vt = tc.check(value);
-        if (!tc.isDefEq(vt, d.type))
-            throw new KernelException("declaration type mismatch, " + d.name + "\n  value has type: " + vt + "\n  but is expected to have type: " + d.type);
+        if (!tc.isDefEq(vt, d.type()))
+            throw new KernelException("declaration type mismatch, " + d.name + "\n  value has type: " + vt + "\n  but is expected to have type: " + d.type());
     }
 
     public void add(Object item) {
@@ -47,24 +47,23 @@ public final class Kernel {
                 checkType(d);
                 if (def.isUnsafe()) {
                     env.add(d);
-                    checkValue(d, def.value);
+                    checkValue(d, def.value());
                 } else {
-                    checkValue(d, def.value);
+                    checkValue(d, def.value());
                     env.add(d);
                 }
                 break;
             }
             case THM: {
                 checkType(d);
-                if (!tc.isPropType(d.type)) throw new KernelException("theorem type is not a proposition: " + d.name);
-                checkValue(d, ((Decl.Thm) d).value());
-                ((Decl.Thm) d).releaseValue();
+                if (!tc.isPropType(d.type())) throw new KernelException("theorem type is not a proposition: " + d.name);
+                checkValue(d, ((Decl.Thm) d).proof());
                 env.add(d);
                 break;
             }
             case OPAQUE: {
                 checkType(d);
-                checkValue(d, ((Decl.Opaque) d).value);
+                checkValue(d, ((Decl.Opaque) d).opaqueValue());
                 env.add(d);
                 break;
             }
@@ -76,8 +75,8 @@ public final class Kernel {
     private void addQuot(Decl.Quot q) {
         checkType(q);
         Expr expected = expectedQuotType(q);
-        if (!q.type.equals(expected))
-            throw new KernelException("quotient declaration " + q.name + " does not have the canonical type\n  expected: " + expected + "\n  exported: " + q.type);
+        if (!q.type().equals(expected))
+            throw new KernelException("quotient declaration " + q.name + " does not have the canonical type\n  expected: " + expected + "\n  exported: " + q.type());
         env.add(q);
         if (q.quotKind.equals("ind")) {
             for (Name n : new Name[] {Names.QUOT, Names.QUOT_MK, Names.QUOT_LIFT})
@@ -99,12 +98,12 @@ public final class Kernel {
         Expr b = tc.mkLocal(Name.of("b"), alpha, "default");
         Expr expectedEq = tc.mkPi(List.of(alpha, a, b), Expr.sort(Level.ZERO));
         Decl.Inductive ind = (Decl.Inductive) eq;
-        if (!eq.type.equals(expectedEq) || ind.numParams != 2 || ind.numIndices != 1 || ind.ctors.size() != 1)
+        if (!eq.type().equals(expectedEq) || ind.numParams != 2 || ind.numIndices != 1 || ind.ctors.size() != 1)
             throw new KernelException("the inductive type Eq does not have the expected shape");
         Decl refl = env.get(ind.ctors.get(0));
         Expr eqApp = Expr.apps(Expr.cnst(Names.EQ, List.of(lu)), alpha, a, a);
         Expr expectedRefl = tc.mkPi(List.of(alpha, a), eqApp);
-        if (!(refl instanceof Decl.Ctor) || !refl.name.equals(Names.EQ_REFL) || !refl.type.equals(expectedRefl))
+        if (!(refl instanceof Decl.Ctor) || !refl.name.equals(Names.EQ_REFL) || !refl.type().equals(expectedRefl))
             throw new KernelException("the constructor Eq.refl does not have the expected type");
     }
 
@@ -164,9 +163,9 @@ public final class Kernel {
         // instantiating the parameters turns a loose bound variable in a constructor field into something that
         // looks bound. Lean checks it up front since 4.37 (lean4#16512); no well-formed export of any version has one.
         for (Decl.Inductive t : b.types)
-            if (t.type.hasFVar || t.type.looseBVarRange > 0) throw new KernelException("inductive type has free variables: " + t.name);
+            if (t.type().hasFVar || t.type().looseBVarRange > 0) throw new KernelException("inductive type has free variables: " + t.name);
         for (Decl.Ctor c : b.ctors)
-            if (c.type.hasFVar || c.type.looseBVarRange > 0) throw new KernelException("constructor type has free variables: " + c.name);
+            if (c.type().hasFVar || c.type().looseBVarRange > 0) throw new KernelException("constructor type has free variables: " + c.name);
         for (Decl.Inductive t : b.types) {
             if (!t.levelParams.equals(first.levelParams)) throw new KernelException("mutual inductive types must have the same universe parameters");
             if (t.numParams != first.numParams) throw new KernelException("mutual inductive types must have the same number of parameters");
@@ -176,9 +175,9 @@ public final class Kernel {
                 Decl.Ctor c = null;
                 for (Decl.Ctor x : b.ctors) if (x.name.equals(cn)) c = x;
                 if (c == null) throw new KernelException("constructor " + cn + " listed by " + t.name + " is missing from the export");
-                cs.add(new IndSpec.Ctor(cn, c.type));
+                cs.add(new IndSpec.Ctor(cn, c.type()));
             }
-            stypes.add(new IndSpec.Type(t.name, t.type, cs));
+            stypes.add(new IndSpec.Type(t.name, t.type(), cs));
         }
         int nctors = 0;
         for (IndSpec.Type t : stypes) nctors += t.ctors.size();
@@ -226,9 +225,9 @@ public final class Kernel {
             Decl.Recursor r = null;
             for (Decl.Recursor x : b.recs) if (x.name.equals(expectName)) r = x;
             if (r == null) throw new KernelException("missing recursor " + expectName);
-            Expr type = nested.restore(g.type, true, auxEnv, recRename);
-            if (!type.equals(r.type))
-                throw new KernelException("recursor " + r.name + " has the wrong type\n  expected: " + type + "\n  exported: " + r.type);
+            Expr type = nested.restore(g.type(), true, auxEnv, recRename);
+            if (!type.equals(r.type()))
+                throw new KernelException("recursor " + r.name + " has the wrong type\n  expected: " + type + "\n  exported: " + r.type());
             if (!r.levelParams.equals(g.levelParams) || r.numParams != g.numParams || r.numIndices != g.numIndices || r.numMotives != g.numMotives
                     || r.numMinors != g.numMinors || r.k != g.k || r.isUnsafe != g.isUnsafe || !r.all.equals(all))
                 throw new KernelException("recursor " + r.name + " has wrong bookkeeping");
@@ -236,11 +235,11 @@ public final class Kernel {
             for (int j = 0; j < g.rules.size(); j++) {
                 Decl.RecRule gr = g.rules.get(j), rr = r.rules.get(j);
                 Name cname = nested.restoreCtorName(gr.ctor, auxEnv);
-                Expr rhs = nested.restore(gr.rhs, false, auxEnv, recRename);
+                Expr rhs = nested.restore(gr.rhs(), false, auxEnv, recRename);
                 if (!rr.ctor.equals(cname) || rr.nfields != gr.nfields)
                     throw new KernelException("recursor rule for " + cname + " has the wrong constructor or field count");
-                if (!rhs.equals(rr.rhs))
-                    throw new KernelException("recursor rule for " + cname + " has the wrong right-hand side\n  expected: " + rhs + "\n  exported: " + rr.rhs);
+                if (!rhs.equals(rr.rhs()))
+                    throw new KernelException("recursor rule for " + cname + " has the wrong right-hand side\n  expected: " + rhs + "\n  exported: " + rr.rhs());
             }
         }
 

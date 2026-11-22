@@ -9,27 +9,30 @@ public abstract class Decl {
     public final Kind kind;
     public final Name name;
     public final List<Name> levelParams;
-    public final Expr type;
+    private final Term type;
 
-    Decl(Kind kind, Name name, List<Name> levelParams, Expr type) {
+    Decl(Kind kind, Name name, List<Name> levelParams, Term type) {
         this.kind = kind;
         this.name = name;
         this.levelParams = levelParams;
         this.type = type;
     }
 
+    /** The declared type (built from the export's expression store on demand). */
+    public final Expr type() { return type.get(); }
+
     public static final class Axiom extends Decl {
         public final boolean isUnsafe;
-        public Axiom(Name n, List<Name> lps, Expr t, boolean u) { super(Kind.AXIOM, n, lps, t); isUnsafe = u; }
+        Axiom(Name n, List<Name> lps, Term t, boolean u) { super(Kind.AXIOM, n, lps, t); isUnsafe = u; }
     }
 
     public static final class Def extends Decl {
-        public final Expr value;
+        private final Term value;
         /** "opaque", "abbrev" or "regular"; height only meaningful for regular. */
         public final String hints;
         public final long height;
         public final String safety;
-        public Def(Name n, List<Name> lps, Expr t, Expr v, String hints, long height, String safety) {
+        Def(Name n, List<Name> lps, Term t, Term v, String hints, long height, String safety) {
             super(Kind.DEF, n, lps, t);
             value = v;
             this.hints = hints;
@@ -40,48 +43,31 @@ public abstract class Decl {
     }
 
     public static final class Thm extends Decl {
-        private Expr value;
-        private java.lang.ref.SoftReference<Expr> rebuilt;
-        private final ExprStore store;
-        private final int valueId;
+        private final Term value;
 
-        public Thm(Name n, List<Name> lps, Expr t, Expr v) { this(n, lps, t, v, null, -1); }
-
-        Thm(Name n, List<Name> lps, Expr t, Expr v, ExprStore store, int valueId) {
+        Thm(Name n, List<Name> lps, Term t, Term v) {
             super(Kind.THM, n, lps, t);
             this.value = v;
-            this.store = store;
-            this.valueId = valueId;
         }
 
-        /** The proof term. After {@link #releaseValue} it is rebuilt from the compact store when asked for. */
-        public Expr value() {
-            Expr v = value;
-            if (v != null) return v;
-            java.lang.ref.SoftReference<Expr> r = rebuilt;
-            v = r == null ? null : r.get();
-            if (v == null) {
-                v = store.materialize(valueId);
-                rebuilt = new java.lang.ref.SoftReference<>(v);
-            }
-            return v;
-        }
-
-        /** Proof terms are the largest terms and almost never unfolded, so they are not kept as objects. */
-        void releaseValue() {
-            if (store != null) value = null;
-        }
+        /**
+         * The proof term for checking this theorem: nodes not already kept are built into scratch space, so the
+         * proof (usually the largest term of all) can be collected once it has been checked.
+         */
+        Expr proof() { return value.getTemp(); }
     }
 
     public static final class Opaque extends Decl {
-        public final Expr value;
+        private final Term value;
         public final boolean isUnsafe;
-        public Opaque(Name n, List<Name> lps, Expr t, Expr v, boolean u) { super(Kind.OPAQUE, n, lps, t); value = v; isUnsafe = u; }
+        Opaque(Name n, List<Name> lps, Term t, Term v, boolean u) { super(Kind.OPAQUE, n, lps, t); value = v; isUnsafe = u; }
+        /** The body; an opaque constant is never unfolded, so this is only for checking it. */
+        public Expr opaqueValue() { return value.get(); }
     }
 
     public static final class Quot extends Decl {
         public final String quotKind; // type | ctor | lift | ind
-        public Quot(Name n, List<Name> lps, Expr t, String k) { super(Kind.QUOT, n, lps, t); quotKind = k; }
+        Quot(Name n, List<Name> lps, Term t, String k) { super(Kind.QUOT, n, lps, t); quotKind = k; }
     }
 
     public static final class Inductive extends Decl {
@@ -89,6 +75,10 @@ public abstract class Decl {
         public final List<Name> all, ctors;
         public final boolean isRec, isUnsafe, isReflexive;
         public Inductive(Name n, List<Name> lps, Expr t, int np, int ni, List<Name> all, List<Name> ctors, int nn,
+                         boolean isRec, boolean isUnsafe, boolean isReflexive) {
+            this(n, lps, Term.of(t), np, ni, all, ctors, nn, isRec, isUnsafe, isReflexive);
+        }
+        Inductive(Name n, List<Name> lps, Term t, int np, int ni, List<Name> all, List<Name> ctors, int nn,
                          boolean isRec, boolean isUnsafe, boolean isReflexive) {
             super(Kind.INDUCTIVE, n, lps, t);
             numParams = np;
@@ -107,6 +97,9 @@ public abstract class Decl {
         public final int cidx, numParams, numFields;
         public final boolean isUnsafe;
         public Ctor(Name n, List<Name> lps, Expr t, Name induct, int cidx, int np, int nf, boolean u) {
+            this(n, lps, Term.of(t), induct, cidx, np, nf, u);
+        }
+        Ctor(Name n, List<Name> lps, Term t, Name induct, int cidx, int np, int nf, boolean u) {
             super(Kind.CTOR, n, lps, t);
             this.induct = induct;
             this.cidx = cidx;
@@ -119,8 +112,10 @@ public abstract class Decl {
     public static final class RecRule {
         public final Name ctor;
         public final int nfields;
-        public final Expr rhs;
-        public RecRule(Name ctor, int nfields, Expr rhs) { this.ctor = ctor; this.nfields = nfields; this.rhs = rhs; }
+        private final Term rhs;
+        public RecRule(Name ctor, int nfields, Expr rhs) { this(ctor, nfields, Term.of(rhs)); }
+        RecRule(Name ctor, int nfields, Term rhs) { this.ctor = ctor; this.nfields = nfields; this.rhs = rhs; }
+        public Expr rhs() { return rhs.get(); }
     }
 
     public static final class Recursor extends Decl {
@@ -130,6 +125,10 @@ public abstract class Decl {
         public final boolean k, isUnsafe;
         public Recursor(Name n, List<Name> lps, Expr t, List<Name> all, int np, int ni, int nmot, int nmin,
                         List<RecRule> rules, boolean k, boolean u) {
+            this(n, lps, Term.of(t), all, np, ni, nmot, nmin, rules, k, u);
+        }
+        Recursor(Name n, List<Name> lps, Term t, List<Name> all, int np, int ni, int nmot, int nmin,
+                 List<RecRule> rules, boolean k, boolean u) {
             super(Kind.RECURSOR, n, lps, t);
             this.all = all;
             numParams = np;
@@ -144,9 +143,9 @@ public abstract class Decl {
     }
 
     /** The definition body, if this constant is unfoldable by delta. */
-    public Expr value() {
-        if (this instanceof Def) return ((Def) this).value;
-        if (this instanceof Thm) return ((Thm) this).value();
+    public final Expr value() {
+        if (this instanceof Def) return ((Def) this).value.get();
+        if (this instanceof Thm) return ((Thm) this).value.get();
         return null;
     }
 

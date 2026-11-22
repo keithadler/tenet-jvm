@@ -41,14 +41,9 @@ public final class ExportReader {
         return l;
     }
 
-    /** The expression with this id, as an object; built on demand and shared within one declaration. */
-    private Expr expr(Object id) {
-        return store.get(i(id));
-    }
-
-    /** A proof term: built into scratch space and not kept by the store. */
-    private Expr proofExpr(Object id) {
-        return store.getTemp(i(id));
+    /** The expression with this id, as a reference into the store; it is built into an object when the kernel asks. */
+    private Term expr(Object id) {
+        return Term.stored(store, eid(id));
     }
 
     private int eid(Object id) {
@@ -128,7 +123,7 @@ public final class ExportReader {
             names = grow(names, id);
             if (o.containsKey("str")) {
                 Map<String, Object> s = m(o.get("str"));
-                names[id] = Name.str(name(s.get("pre")), (String) s.get("str"));
+                names[id] = Name.str(name(s.get("pre")), intern((String) s.get("str")));
             } else {
                 Map<String, Object> s = m(o.get("num"));
                 names[id] = Name.num(name(s.get("pre")), (Long) s.get("i"));
@@ -196,6 +191,18 @@ public final class ExportReader {
 
     private void decl(Map<String, Object> o, Consumer<Object> sink) {
         declCore(o, sink);
+        store.endDeclaration();
+    }
+
+    /**
+     * Name components repeat a great deal (`_simp_1`, `inst`, `match_1`, ...); one String per distinct
+     * component instead of one per name. Interned only while reading, so the table stays small.
+     */
+    private final java.util.HashMap<String, String> strings = new java.util.HashMap<>();
+
+    private String intern(String s) {
+        String t = strings.putIfAbsent(s, s);
+        return t == null ? s : t;
     }
 
     private void declCore(Map<String, Object> o, Consumer<Object> sink) {
@@ -212,7 +219,7 @@ public final class ExportReader {
                     hints, height, (String) d.get("safety")));
         } else if (o.containsKey("thm")) {
             Map<String, Object> d = m(o.get("thm"));
-            sink.accept(new Decl.Thm(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), proofExpr(d.get("value")), store, i(d.get("value"))));
+            sink.accept(new Decl.Thm(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), expr(d.get("value"))));
         } else if (o.containsKey("opaque")) {
             Map<String, Object> d = m(o.get("opaque"));
             sink.accept(new Decl.Opaque(name(d.get("name")), nameList(d.get("levelParams")), expr(d.get("type")), expr(d.get("value")),
