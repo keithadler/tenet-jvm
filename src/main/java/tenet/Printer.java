@@ -4,13 +4,22 @@ package tenet;
 public final class Printer {
     private Printer() { }
 
+    /**
+     * Characters printed for one term. Terms are DAGs and the printer writes them out as trees, so a term of a
+     * few thousand shared nodes can print as gigabytes; the message of a rejection must not be what exhausts
+     * the heap. The longest message any local test export produces is under 9,000 characters.
+     */
+    private static final int LIMIT = 100_000;
+
     public static String show(Expr e) {
         StringBuilder sb = new StringBuilder();
         go(e, sb, 0);
+        if (sb.length() > LIMIT) { sb.setLength(LIMIT); sb.append(" …(truncated)"); }
         return sb.toString();
     }
 
     private static void go(Expr e, StringBuilder sb, int depth) {
+        if (sb.length() > LIMIT) return;
         if (depth > 40) { sb.append("…"); return; }
         switch (e.kind) {
             case BVAR: sb.append('#').append(((Expr.BVar) e).idx); break;

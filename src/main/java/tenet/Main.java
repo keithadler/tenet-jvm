@@ -13,12 +13,18 @@ import java.util.Map;
 public final class Main {
     static final String VERSION = "0.1.5";
     private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
+    /** --verbose: name each declaration on stderr before checking it, and its time and heap after. */
+    private static boolean verbose = false;
+    /** The item being checked and when it started, for the --verbose heartbeat. */
+    private static volatile String current = null;
+    private static volatile long currentStart = 0;
 
     public static void main(String[] args) throws Exception {
         boolean keepGoing = false;
         String file = null;
         for (String a : args) {
             if (a.equals("--keep-going")) keepGoing = true;
+            else if (a.equals("--verbose")) verbose = true;
             else if (a.equals("-h") || a.equals("--help")) { usage(); return; }
             else if (a.equals("--version")) { System.out.println("tenet-jvm " + VERSION); return; }
             else file = a;
@@ -45,7 +51,7 @@ public final class Main {
     }
 
     private static void usage() {
-        System.err.println("tenet-jvm " + VERSION + "\nusage: tenet-jvm [--keep-going] [--version] <export.ndjson | ->");
+        System.err.println("tenet-jvm " + VERSION + "\nusage: tenet-jvm [--keep-going] [--verbose] [--version] <export.ndjson | ->");
     }
 
     private static int run(String file, boolean keepGoing) {
@@ -58,20 +64,45 @@ public final class Main {
         int[] failures = {0};
         int[] blocks = {0};
         int[] done = {0};
+        if (verbose) {
+            Thread beat = new Thread(() -> {
+                while (true) {
+                    try { Thread.sleep(30_000); } catch (InterruptedException e) { return; }
+                    String c = current;
+                    if (c == null) continue;
+                    long s = (System.nanoTime() - currentStart) / 1_000_000_000L;
+                    if (s < 30) continue;
+                    Runtime rt = Runtime.getRuntime();
+                    System.err.println("  still checking " + c + " after " + s + " s, heap " + ((rt.totalMemory() - rt.freeMemory()) >> 20) + " MB");
+                }
+            }, "heartbeat");
+            beat.setDaemon(true);
+            beat.start();
+        }
         try (BufferedReader in = file.equals("-")
                 ? new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))
                 : Files.newBufferedReader(Path.of(file), StandardCharsets.UTF_8)) {
             reader.read(in, item -> {
                 if (failures[0] > 0 && !keepGoing) return;
                 String label = item instanceof InductiveBlock ? "inductive " + ((InductiveBlock) item).types.get(0).name : ((Decl) item).kind + " " + ((Decl) item).name;
-                if (TRACE) System.err.println("> " + label);
+                if (TRACE || verbose) { System.err.println("> " + label); System.err.flush(); }
                 try {
                     long t0 = System.nanoTime();
+                    currentStart = t0;
+                    current = label;
                     kernel.add(item);
+                    current = null;
                     long ms = (System.nanoTime() - t0) / 1_000_000;
+                    if (verbose) {
+                        Runtime rt = Runtime.getRuntime();
+                        System.err.println("< " + ms + " ms, heap " + ((rt.totalMemory() - rt.freeMemory()) >> 20) + " MB: " + label);
+                    }
                     if (ms > 2000) System.err.println("slow (" + ms + " ms): " + label);
                     if ((++done[0] & 1023) == 0) System.err.println("... " + done[0] + " items, at " + label);
                     if (item instanceof InductiveBlock) blocks[0]++; else counts.merge(((Decl) item).kind, 1, Integer::sum);
+                } catch (OutOfMemoryError e) {
+                    // Unwinding has made the declaration's working set garbage, so there is room to say which one it was.
+                    throw new OutOfMemoryError(e.getMessage() + " while checking " + label);
                 } catch (KernelException | StackOverflowError e) {
                     failures[0]++;
                     if (TRACE && e instanceof StackOverflowError) {

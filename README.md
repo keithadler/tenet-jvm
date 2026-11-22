@@ -83,7 +83,7 @@ RAM). `JAVA` and `JAVA_OPTS` override the `java` binary and the options.
 ## Commands
 
 ```
-bin/tenet-jvm [--keep-going] [--version] <export.ndjson | ->
+bin/tenet-jvm [--keep-going] [--verbose] [--version] <export.ndjson | ->
 ```
 
 | Exit code | Meaning |
