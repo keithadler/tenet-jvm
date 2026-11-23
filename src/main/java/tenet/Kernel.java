@@ -36,7 +36,33 @@ public final class Kernel {
             throw new KernelException("declaration type mismatch, " + d.name + "\n  value has type: " + vt + "\n  but is expected to have type: " + d.type());
     }
 
+    /**
+     * Checks a declaration and adds it. The checker caches definitional-equality failures, which can only
+     * reject more, so a rejection is re-checked with that cache off and only the faithful outcome counts.
+     */
     public void add(Object item) {
+        if (!tc.cacheFailures) { addOnce(item); return; }
+        boolean quot = env.quotInitialized;
+        env.startJournal();
+        try {
+            addOnce(item);
+        } catch (KernelException | StackOverflowError e) {
+            // Nothing else is recorded before a declaration is accepted (axioms are listed after env.add succeeds).
+            env.rollBack();
+            env.quotInitialized = quot;
+            env.stopJournal();
+            tc.cacheFailures = false;
+            try {
+                addOnce(item);
+            } finally {
+                tc.cacheFailures = true;
+            }
+        } finally {
+            env.stopJournal();
+        }
+    }
+
+    private void addOnce(Object item) {
         if (item instanceof InductiveBlock) { addInductive((InductiveBlock) item); return; }
         Decl d = (Decl) item;
         tc.begin(d.levelParams, TypeChecker.rank(d));
@@ -190,6 +216,7 @@ public final class Kernel {
         IndSpec auxSpec = nested.run();
         Env auxEnv = env.fork();
         TypeChecker auxTc = new TypeChecker(auxEnv);
+        auxTc.cacheFailures = tc.cacheFailures;
         auxTc.begin(first.levelParams, TypeChecker.rank(first));
         InductiveChecker.Result gen = new InductiveChecker(auxEnv, auxTc, auxSpec).run();
 

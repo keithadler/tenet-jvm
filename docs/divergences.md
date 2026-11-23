@@ -93,6 +93,14 @@ different strategy can turn a quick check into one that never finishes.
   of 2³¹ one successor at a time.)
 - **When only one side of a comparison can be unfolded and the other is a stuck projection, the projection
   is reduced first.** Same reason, same example.
+- **Definitional-equality failures are cached per declaration, and a rejection is re-checked without that
+  cache.** The reference caches only successes. A cached failure can only make a later comparison answer "not
+  equal", which callers turn into a rejection or a reduction not taken, never into an acceptance; so the first
+  pass accepts a subset of what the faithful algorithm accepts, and `Kernel.add` re-runs any rejected
+  declaration with the cache off, reporting only that outcome. Without the cache, one theorem of the claimed
+  RH proof (`Formalism.MainNotions.DIV.Lemmas.OrbitEntryBounds.addition_bound_holds`, a 226-node proof)
+  repeated the same failing `Int`/`Nat` recursor comparisons until 120 GB of heap ran out; with it, it takes
+  0.3 s. Tenet does the same. `TENET_NO_FAILURE_CACHE=1` turns it off.
 - **After full `whnfCore`, progress is "the term changed structurally"**, not "the term is a different
   object", so equal copies cannot loop.
 - **Small substitutions run without a cache; large ones switch to a cache** keyed on node identity and

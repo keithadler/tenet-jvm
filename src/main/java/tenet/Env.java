@@ -37,5 +37,20 @@ public final class Env {
     public void add(Decl d) {
         if (contains(d.name)) throw new KernelException("already declared: " + d.name);
         decls.put(d.name, d);
+        if (journal != null) journal.add(d.name);
+    }
+
+    /** Names added since {@link #startJournal}, so that a declaration that is re-checked can be taken back out. */
+    private java.util.List<Name> journal = null;
+
+    void startJournal() { journal = new java.util.ArrayList<>(); }
+
+    void stopJournal() { journal = null; }
+
+    /** Removes everything added since {@link #startJournal}. */
+    void rollBack() {
+        if (journal == null) return;
+        for (Name n : journal) decls.remove(n);
+        journal.clear();
     }
 }

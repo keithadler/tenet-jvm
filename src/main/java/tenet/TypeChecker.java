@@ -37,6 +37,18 @@ public final class TypeChecker {
     private Map<Expr, Expr> unfoldCache = new HashMap<>();
     private Set<List<Expr>> eqCache = new HashSet<>();
     private Set<List<Expr>> failCache = new HashSet<>();
+    /**
+     * Pairs found not definitionally equal while checking this declaration. The reference kernel caches only
+     * successes, and on some declarations repeats the same failing comparison until memory runs out (the
+     * Int and Nat recursor reductions of one theorem in the claimed RH proof, which Tenet checks in seconds).
+     * A cached failure can only make isDefEq answer false where a fresh check might find true; every caller
+     * turns false into a rejection or into a reduction not taken, never into an acceptance. So with the cache
+     * the checker accepts a subset of what it accepts without, and {@link Kernel#add} re-checks any rejected
+     * declaration with the cache off before reporting it: verdicts and messages are those of the faithful run.
+     */
+    private Set<List<Expr>> neqCache = new HashSet<>();
+    /** Whether failures are cached (see {@link #neqCache}); off with TENET_NO_FAILURE_CACHE set. */
+    boolean cacheFailures = System.getenv("TENET_NO_FAILURE_CACHE") == null;
 
     public TypeChecker(Env env) { this.env = env; }
 
@@ -61,6 +73,7 @@ public final class TypeChecker {
         deltaStepCache = fresh(deltaStepCache);
         if (eqCache.size() > 256) eqCache = new HashSet<>(); else eqCache.clear();
         if (failCache.size() > 256) failCache = new HashSet<>(); else failCache.clear();
+        if (neqCache.size() > 256) neqCache = new HashSet<>(); else neqCache.clear();
     }
 
     // ---- local context -----------------------------------------------------
@@ -631,8 +644,11 @@ public final class TypeChecker {
     // ---- definitional equality --------------------------------------------
 
     public boolean isDefEq(Expr t, Expr s) {
+        List<Expr> key = List.of(t, s);
+        if (cacheFailures && neqCache.contains(key)) return false;
         boolean r = isDefEqCore(t, s);
-        if (r) eqCache.add(List.of(t, s));
+        if (r) eqCache.add(key);
+        else if (cacheFailures) neqCache.add(key);
         return r;
     }
 
