@@ -1,5 +1,24 @@
 # Status
 
+Version 0.1.6, 23 November 2026: memory and speed for very large exports, no change to what is accepted.
+
+- **Compact memory.** Expressions live in a chunked store (about 10.6 bytes a node instead of 17) and declarations
+  hold ids into it; objects are built on demand into a memo that is dropped between declarations. On the Mathlib
+  slice `slice.wide` (415,915 constants) the live heap fell from 2.86 GB to 1.16 GB.
+- **Failed definitional-equality checks are cached** for the current declaration, as Tenet does. A cached failure
+  can only turn into a rejection, so any rejected declaration is checked again with the cache off and only that
+  result counts (`TENET_NO_FAILURE_CACHE=1` turns it off). One theorem of the claimed Lean proof of the Riemann
+  Hypothesis went from out of memory at 104 GB to 0.3 s.
+- **`--verbose`** prints each declaration with its time and heap, and an out-of-memory error names the declaration.
+- **`Nat.shiftLeft 0 n` is `0` for every `n`**, however large; before, a shift count past 2^24 fell back to unfolding
+  the definition and did not finish (the arena's new `bugs/nat-shift-huge`).
+
+Checked for this release: the whole claimed Lean proof of the Riemann Hypothesis (1,468,414 declarations, Lean 4.33.1
+export, 61.6 GB) all verified in 6 h 05 m at 96.4 GB peak (0.1.5 ran out of memory on it); `Init` and `Lean` on
+Lean 4.36.0 and 4.37.0-rc1, the same counts as below; `slice.wide`; and the arena at 99195b6 (23 November), built
+locally: 231 correct, 28 "either", 0 wrongly accepted, 0 wrongly rejected, 2 timed out (the two
+`eta-struct-major-*-no-whnf` cases, as before). Not rechecked: all of Mathlib and the arena's other large corpora.
+
 Version 0.1.5, 19 November 2026: checked against Lean 4.36.0 and 4.37.0-rc1, with code changes. (0.1.4, 24 October 2026,
 was checked against Lean 4.35.0 with no code change from 0.1.3.)
 

@@ -43,7 +43,9 @@ cd ../tenet-jvm
 uv run --with pyyaml tools/arena_check.py ../lean-kernel-arena
 ```
 
-Result (arena at 76ddcf8, 12 October 2026): **197 correct, 24 "either", 0 wrongly accepted, 0 wrongly rejected, 2 timed out** (the two `eta-struct-major-*-no-whnf` cases; see [status](status.md))
+Latest result (arena at 99195b6, 23 November 2026, version 0.1.6): **231 correct, 28 "either", 0 wrongly accepted, 0 wrongly rejected, 2 timed out** (the same two `eta-struct-major-*-no-whnf` cases).
+
+First result (arena at 76ddcf8, 12 October 2026): **197 correct, 24 "either", 0 wrongly accepted, 0 wrongly rejected, 2 timed out** (the two `eta-struct-major-*-no-whnf` cases; see [status](status.md))
 (tutorial 141 sub-tests, bugs 18, corner cases 19, other 9, perf 28).
 
 The first run was not clean: it wrongly accepted two soundness-bug tests and wrongly rejected one level

@@ -11,7 +11,7 @@ import java.util.Map;
 
 /** Command line: java -jar tenet-jvm.jar [--keep-going] export.ndjson  (or - for stdin). */
 public final class Main {
-    static final String VERSION = "0.1.5";
+    static final String VERSION = "0.1.6";
     private static final boolean TRACE = System.getenv("TENET_TRACE") != null;
     /** --verbose: name each declaration on stderr before checking it, and its time and heap after. */
     private static boolean verbose = false;
