@@ -269,6 +269,7 @@ def input_checks():
 # Exports that must be accepted: each one is a declaration an earlier version of the checker wrongly rejected.
 POSITIVE = {
     "copy_potential.ndjson": "structure in Type (u+1) with a Nat field: u+2 >= 1 (navier-stokes-euler, arena)",
+    "nat_shift_huge.ndjson": "Nat.shiftLeft 0 and Nat.shiftRight 42 by 2^64 reduce to 0 (arena bugs/nat-shift-huge)",
 }
 
 

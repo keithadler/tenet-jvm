@@ -577,6 +577,7 @@ public final class TypeChecker {
         NAT_BIN.put(Name.of("Nat.lor"), BigInteger::or);
         NAT_BIN.put(Name.of("Nat.xor"), BigInteger::xor);
         NAT_BIN.put(Name.of("Nat.shiftLeft"), (a, b) -> {
+            if (a.signum() == 0) return BigInteger.ZERO;   // 0 <<< n = 0 for every n, however large (arena bugs/nat-shift-huge)
             if (b.compareTo(BigInteger.valueOf(MAX_SHIFT)) > 0) return null;
             return a.shiftLeft(b.intValue());
         });
