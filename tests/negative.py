@@ -263,6 +263,11 @@ def input_checks():
         verdict = "ok" if code == 1 else f"ACCEPTED({code})" if code == 0 else f"CRASH({code})"
         print(f"{verdict:8} input: {name}")
         bad += code != 1
+    # A format newer than the checker reads is declined (2): no verdict, rather than one under the wrong rules.
+    for version in ("3.2.0", "3.10.0", "3.2"):
+        code = run_text(good.replace('"format":{"version":"3.1.0"}', '"format":{"version":"%s"}' % version, 1))
+        print(f"{'ok' if code == 2 else f'WRONG({code})':8} declined: format {version}")
+        bad += code != 2
     return bad
 
 

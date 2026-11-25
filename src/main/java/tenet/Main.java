@@ -37,6 +37,9 @@ public final class Main {
         Thread t = new Thread(null, () -> {
             try {
                 code[0] = run(f, kg);
+            } catch (DeclinedException e) {
+                System.out.println("DECLINED " + e.getMessage());
+                code[0] = 2;
             } catch (KernelException e) {
                 System.out.println("REJECTED malformed export: " + e.getMessage());
                 code[0] = 1;

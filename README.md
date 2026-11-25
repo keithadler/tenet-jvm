@@ -90,6 +90,7 @@ bin/tenet-jvm [--keep-going] [--verbose] [--version] <export.ndjson | ->
 |---|---|
 | `0` | every declaration was accepted |
 | `1` | something was rejected, or the export is malformed |
+| `2` | declined: the export is in a format newer than this checker reads (3.2 and later) |
 | `3` | an internal error or an unreadable file |
 | `64` | usage error |
 

@@ -117,6 +117,11 @@ public final class ExportReader {
             formatVersion = String.valueOf(m(meta.get("format")).get("version"));
             leanVersion = String.valueOf(m(meta.get("lean")).get("version"));
             if (!formatVersion.startsWith("3.")) throw new KernelException("unsupported export format version " + formatVersion + " (this checker reads 3.x)");
+            // Format 3.2 adds flags to inductive types that the kernel must check (lean4#16595); reading it without
+            // them would give verdicts under the wrong rules.
+            String minor = formatVersion.split("\\.", -1)[1];
+            if (!minor.equals("0") && !minor.equals("1"))
+                throw new DeclinedException("export format " + formatVersion + " is not supported yet (the newest supported is 3.1)");
             if (onMeta != null) onMeta.run();
         } else if (o.containsKey("in")) {
             int id = i(o.get("in"));
